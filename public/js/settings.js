@@ -24,9 +24,9 @@ const validateSettings = (settings) => {
     }
 
     // Blog title validation
-    if (settings.blogTitle && settings.blogTitle.trim() !== '') {
-        if (settings.blogTitle.length > 200) {
-            errors.blogTitle = 'Titolo blog troppo lungo (max 200 caratteri)';
+    if (settings.ambDataPath && settings.ambDataPath.trim() !== '') {
+        if (settings.ambDataPath.length > 200) {
+            errors.ambDataPath = 'BasePath troppo lungo (max 200 caratteri)';
         }
     }
 
@@ -64,7 +64,7 @@ function openSettingsModal() {
     // Populate form with current settings
     document.getElementById('gitUsername').value = currentSettings.gitUsername || '';
     document.getElementById('authorName').value = currentSettings.authorName || '';
-    document.getElementById('blogTitle').value = currentSettings.blogTitle || '';
+    document.getElementById('ambDataPath').value = currentSettings.ambDataPath || '';
     document.getElementById('theme').value = currentSettings.theme || 'default';
     document.getElementById('articlesPerPage').value = currentSettings.articlesPerPage || 10;
     document.getElementById('autoPublish').checked = currentSettings.autoPublish || false;
@@ -86,7 +86,7 @@ document.getElementById('settingsForm').addEventListener('submit', async (e) => 
     const formData = {
         gitUsername: document.getElementById('gitUsername').value.trim(),
         authorName: document.getElementById('authorName').value.trim(),
-        blogTitle: document.getElementById('blogTitle').value.trim(),
+        ambDataPath: document.getElementById('ambDataPath').value.trim(),
         theme: document.getElementById('theme').value,
         articlesPerPage: parseInt(document.getElementById('articlesPerPage').value) || 10,
         autoPublish: document.getElementById('autoPublish').checked

@@ -2,7 +2,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { userConfig } from '../conf/conf.js';
 
-const ARTICLES_DIR = `${userConfig.get('articlesBasePath')}/articles/`;
+const ARTICLES_DIR = `${userConfig.get('ambDataPath')}/articles/`;
 const LIST_FILE = path.join(ARTICLES_DIR, 'list.json');
 
 const articlesController = {

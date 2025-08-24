@@ -1,6 +1,0 @@
-{
-    "articlesBasePath": "/archive/projects/ambvilladogna/amb-data",
-    "httpd": {
-        "port": 3000
-    }
-}
