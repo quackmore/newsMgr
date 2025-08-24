@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="it">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestore Articoli - Microblog</title>
+    <link rel="stylesheet" href="/styles/main.css">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>Gestore Articoli</h1>
+            <p class="subtitle">Gestisci gli articoli del tuo microblog</p>
+        </header>
+
+        <div class="actions">
+            <button class="btn btn-success" onclick="openNewArticleModal()">Nuovo Articolo</button>
+            <button class="btn" onclick="loadArticles()">Aggiorna Lista</button>
+            <button class="btn btn-secondary" onclick="openSettingsModal()">⚙️ Impostazioni</button>
+            <!--
+            <button class="btn" onclick="bulkPublish()">Pubblica Bozze</button>
+            -->
+        </div>
+
+        <div id="articlesContainer">
+            <div class="loading">Caricamento articoli...</div>
+        </div>
+    </div>
+
+    <!-- Modal per nuovo/modifica articolo -->
+    <div id="articleModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <h2 id="modalTitle">Nuovo Articolo</h2>
+
+            <form id="articleForm">
+                <div class="form-group">
+                    <label for="articleTitle">Titolo</label>
+                    <input type="text" id="articleTitle" required>
+                    <div class="error" id="titleError"></div>
+                </div>
+
+                <div class="form-group">
+                    <label for="articleExcerpt">Estratto</label>
+                    <textarea id="articleExcerpt" required></textarea>
+                    <div class="error" id="excerptError"></div>
+                </div>
+
+                <div class="form-group">
+                    <label for="articleCategory">Categoria</label>
+                    <select id="articleCategory" required>
+                        <option value="">Seleziona categoria</option>
+                        <option value="eventi">Eventi</option>
+                        <option value="news">News</option>
+                        <option value="tutorial">Tutorial</option>
+                        <option value="recensioni">Recensioni</option>
+                    </select>
+                    <div class="error" id="categoryError"></div>
+                </div>
+
+                <div class="form-group">
+                    <label for="articleStatus">Status</label>
+                    <select id="articleStatus" required>
+                        <option value="draft">Bozza</option>
+                        <option value="published">Pubblicato</option>
+                        <option value="deleted">Eliminato</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="articleAuthor">Autore</label>
+                    <input type="text" id="articleAuthor" value="author" required>
+                </div>
+
+                <div style="text-align: right; margin-top: 30px;">
+                    <button type="button" class="btn" onclick="closeModal()">Annulla</button>
+                    <button type="submit" class="btn btn-success">Salva Articolo</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal per impostazioni -->
+    <div id="settingsModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeSettingsModal()">&times;</span>
+            <h2>⚙️ Impostazioni Microblog</h2>
+
+            <form id="settingsForm">
+                <div class="form-group">
+                    <label for="gitUsername">Username Git</label>
+                    <input type="text" id="gitUsername" placeholder="Il tuo username Git">
+                    <small>Username utilizzato per i commit Git</small>
+                    <div class="error" id="gitUsernameError"></div>
+                </div>
+
+                <div class="form-group">
+                    <label for="authorName">Nome Autore</label>
+                    <input type="text" id="authorName" placeholder="Nome visualizzato negli articoli">
+                    <small>Nome che apparirà come autore degli articoli</small>
+                    <div class="error" id="authorNameError"></div>
+                </div>
+
+                <div class="form-group">
+                    <label for="blogTitle">Titolo Blog</label>
+                    <input type="text" id="blogTitle" placeholder="Il titolo del tuo microblog">
+                    <small>Titolo principale del tuo microblog</small>
+                    <div class="error" id="blogTitleError"></div>
+                </div>
+
+                <div class="form-group">
+                    <label for="theme">Tema</label>
+                    <select id="theme">
+                        <option value="default">Default</option>
+                        <option value="dark">Dark</option>
+                        <option value="minimal">Minimal</option>
+                        <option value="modern">Modern</option>
+                    </select>
+                    <small>Tema visuale del microblog</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="articlesPerPage">Articoli per pagina</label>
+                    <input type="number" id="articlesPerPage" min="1" max="50" placeholder="10">
+                    <small>Numero di articoli mostrati per pagina</small>
+                    <div class="error" id="articlesPerPageError"></div>
+                </div>
+
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="autoPublish">
+                        <span class="checkmark"></span>
+                        Auto-pubblicazione
+                    </label>
+                    <small>Pubblica automaticamente i nuovi articoli</small>
+                </div>
+
+                <div style="text-align: right; margin-top: 30px;">
+                    <button type="button" class="btn" onclick="closeSettingsModal()">Annulla</button>
+                    <button type="submit" class="btn btn-success">Salva Impostazioni</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script type="text/javascript" src="/js/articles.js"></script>
+    <script type="text/javascript" src="/js/settings.js"></script>
+</body>
+
+</html>
