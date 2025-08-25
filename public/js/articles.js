@@ -93,6 +93,11 @@ function openNewArticleModal() {
     editingId = null;
     document.getElementById('modalTitle').textContent = 'Nuovo Articolo';
     document.getElementById('articleForm').reset();
+
+    // Use configured author name
+    const authorName = getSetting('authorName', 'author');
+    document.getElementById('articleAuthor').value = authorName;
+
     document.getElementById('articleModal').style.display = 'block';
     clearErrors();
 }
@@ -107,7 +112,6 @@ function editArticle(id) {
     document.getElementById('modalTitle').textContent = 'Modifica Articolo';
 
     // Populate form
-    document.getElementById('articleId').value = article.id;
     document.getElementById('articleTitle').value = article.title;
     document.getElementById('articleExcerpt').value = article.excerpt;
     document.getElementById('articleCategory').value = article.category;
@@ -132,7 +136,7 @@ function generateArticleId(title) {
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const day = String(now.getDate()).padStart(2, '0');
     const datePrefix = `${year}${month}${day}`;
-    
+
     // Create title summary
     const titleSummary = title
         .toLowerCase()
@@ -148,18 +152,18 @@ function generateArticleId(title) {
         .substring(0, 30)
         // Remove trailing hyphen if substring cut in the middle
         .replace(/-+$/, '');
-    
+
     const baseId = `${datePrefix}-${titleSummary}`;
-    
+
     // Check for duplicates and add counter if needed
     let finalId = baseId;
     let counter = 1;
-    
+
     while (articles.some(article => article.id === finalId && article.id !== editingId)) {
         finalId = `${baseId}-${counter}`;
         counter++;
     }
-    
+
     return finalId;
 }
 
@@ -168,7 +172,7 @@ document.getElementById('articleForm').addEventListener('submit', async (e) => {
     e.preventDefault();
 
     const title = document.getElementById('articleTitle').value.trim();
-    const generatedId = generateArticleId(title);
+    const generatedId = isEditing ? editingId : generateArticleId(title);
 
     const formData = {
         id: generatedId,
@@ -177,14 +181,14 @@ document.getElementById('articleForm').addEventListener('submit', async (e) => {
         category: document.getElementById('articleCategory').value,
         status: document.getElementById('articleStatus').value,
         author: document.getElementById('articleAuthor').value.trim(),
-        date: new Date().toISOString().split('T')[0],
+        date: isEditing ? (articles.find(a => a.id === editingId)?.date || new Date().toISOString().split('T')[0]) : new Date().toISOString().split('T')[0],
         featured_image: '',
         images: [],
         slug: `${generatedId}/${generatedId}.html`,
         tags: []
     };
 
-    // Validate (remove ID from validation since it's auto-generated)
+    // Validate
     const errors = validateArticle(formData);
     if (Object.keys(errors).length > 0) {
         showValidationErrors(errors);
@@ -192,40 +196,54 @@ document.getElementById('articleForm').addEventListener('submit', async (e) => {
     }
 
     try {
-        const url = '/api/articles/';
-        const method = isEditing ? 'PUT' : 'POST';
+        // Update the local articles array first
+        if (isEditing) {
+            const index = articles.findIndex(a => a.id === editingId);
+            if (index !== -1) {
+                articles[index] = formData;
+            }
+        } else {
+            articles.push(formData);
+        }
 
-        const response = await fetch(url, {
-            method,
+        // Send the updated articles array to the API
+        const response = await fetch('/api/articles/', {
+            method: 'PUT', // Always PUT since we're updating the entire array
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify(isEditing ? articles : formData)
+            body: JSON.stringify(articles)
         });
 
         const result = await response.json();
 
         if (result.success) {
-            if (!isEditing) {
-                articles.push(formData);
-            } else {
-                const index = articles.findIndex(a => a.id === editingId);
-                if (index !== -1) {
-                    articles[index] = formData;
-                }
-            }
-
             renderArticles();
             closeModal();
             showSuccess(isEditing ? 'Articolo aggiornato!' : 'Articolo creato!');
         } else {
+            // Revert the local changes if API call failed
+            if (isEditing) {
+                // Reload articles to get back to original state
+                loadArticles();
+            } else {
+                // Remove the added article
+                articles.pop();
+            }
             showError(result.error || 'Errore nel salvataggio');
         }
     } catch (error) {
         console.error('Error saving article:', error);
+        // Revert the local changes if API call failed
+        if (isEditing) {
+            loadArticles();
+        } else {
+            articles.pop();
+        }
         showError('Errore di connessione');
     }
 });
+
 // Toggle article status
 async function toggleStatus(id) {
     const article = articles.find(a => a.id === id);

@@ -23,18 +23,10 @@ const validateSettings = (settings) => {
         }
     }
 
-    // Blog title validation
+    // Data base path validation
     if (settings.ambDataPath && settings.ambDataPath.trim() !== '') {
         if (settings.ambDataPath.length > 200) {
             errors.ambDataPath = 'BasePath troppo lungo (max 200 caratteri)';
-        }
-    }
-
-    // Articles per page validation
-    if (settings.articlesPerPage) {
-        const num = parseInt(settings.articlesPerPage);
-        if (isNaN(num) || num < 1 || num > 50) {
-            errors.articlesPerPage = 'Numero articoli deve essere tra 1 e 50';
         }
     }
 
@@ -65,9 +57,6 @@ function openSettingsModal() {
     document.getElementById('gitUsername').value = currentSettings.gitUsername || '';
     document.getElementById('authorName').value = currentSettings.authorName || '';
     document.getElementById('ambDataPath').value = currentSettings.ambDataPath || '';
-    document.getElementById('theme').value = currentSettings.theme || 'default';
-    document.getElementById('articlesPerPage').value = currentSettings.articlesPerPage || 10;
-    document.getElementById('autoPublish').checked = currentSettings.autoPublish || false;
 
     document.getElementById('settingsModal').style.display = 'block';
     clearSettingsErrors();
@@ -86,10 +75,7 @@ document.getElementById('settingsForm').addEventListener('submit', async (e) => 
     const formData = {
         gitUsername: document.getElementById('gitUsername').value.trim(),
         authorName: document.getElementById('authorName').value.trim(),
-        ambDataPath: document.getElementById('ambDataPath').value.trim(),
-        theme: document.getElementById('theme').value,
-        articlesPerPage: parseInt(document.getElementById('articlesPerPage').value) || 10,
-        autoPublish: document.getElementById('autoPublish').checked
+        ambDataPath: document.getElementById('ambDataPath').value.trim()
     };
 
     // Validate settings
