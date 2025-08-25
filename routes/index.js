@@ -1,5 +1,6 @@
 import express from 'express';
 import { articlesRoutes } from './articles.routes.js';
+import { imagesRoutes } from './images.routes.js';
 import { confRoutes } from './conf.routes.js';
 // const gitRoutes = require('./git.routes');
 
@@ -7,6 +8,7 @@ const router = express.Router();
 
 // Register all route modules
 router.use('/articles', articlesRoutes);
+router.use('/images', imagesRoutes);
 router.use('/config', confRoutes);
 // router.use('/git', gitRoutes);
 

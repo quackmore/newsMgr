@@ -33,6 +33,7 @@ const articlesController = {
         }
     },
 
+    // TODO: check if still needed
     // POST / - Create new article (adds to list and creates files)
     async createArticle(req, res) {
         try {
@@ -121,6 +122,66 @@ const articlesController = {
                 success: false,
                 error: 'Failed to update articles list'
             });
+        }
+    },
+
+    // GET /:id/content - Get the content of a specific article
+    async getArticleContent(req, res) {
+        const { articleId } = req.params;
+        const articlePath = path.join(ARTICLES_DIR, articleId, `${articleId}.html`);
+
+        try {
+            const content = await fs.readFile(articlePath, 'utf8');
+            res.json({ success: true, content });
+        } catch (error) {
+            console.error(`Error loading content for article ${articleId}:`, error);
+            if (error.code === 'ENOENT') {
+                res.status(404).json({ success: false, error: 'Article not found.' });
+            } else {
+                res.status(500).json({ success: false, error: 'Failed to load article content.' });
+            }
+        }
+    },
+
+    // PUT /:id/content - Save the content of a specific article
+    async saveArticleContent(req, res) {
+        const { articleId } = req.params;
+        const { content } = req.body; // Expecting content in the request body
+        const articleDirPath = path.join(ARTICLES_DIR, articleId);
+        const articlePath = path.join(articleDirPath, `${articleId}.html`);
+
+        if (!content) {
+            return res.status(400).json({ success: false, error: 'Content is required in the request body.' });
+        }
+
+        try {
+            // Ensure the directory exists before writing the file
+            await fs.mkdir(articleDirPath, { recursive: true });
+            await fs.writeFile(articlePath, content, 'utf8');
+            res.json({ success: true, message: `Article ${articleId} content saved successfully.` });
+        } catch (error) {
+            console.error(`Error saving content for article ${articleId}:`, error);
+            res.status(500).json({ success: false, error: 'Failed to save article content.' });
+        }
+    },
+
+    // DELETE /:id/content - Delete the content file of a specific article
+    async deleteArticleContent(req, res) {
+        const { articleId } = req.params;
+        const articlePath = path.join(ARTICLES_DIR, articleId, `${articleId}.html`);
+
+        try {
+            // Check if the file exists before attempting to delete
+            await fs.access(articlePath); // This will throw an error if the file doesn't exist
+            await fs.unlink(articlePath); // Delete the file
+            res.json({ success: true, message: `Article ${articleId} content file deleted successfully.` });
+        } catch (error) {
+            console.error(`Error deleting content for article ${articleId}:`, error);
+            if (error.code === 'ENOENT') {
+                res.status(404).json({ success: false, error: 'Article content file not found.' });
+            } else {
+                res.status(500).json({ success: false, error: 'Failed to delete article content file.' });
+            }
         }
     }
 };

@@ -1,22 +1,255 @@
 let articles = [];
 let isEditing = false;
 let editingId = null;
+let quillEditor = null;
+let articleImages = [];
+let currentArticleId = null;
+let currentArticleContent = null;
 
 // Load articles on page load
-document.addEventListener('DOMContentLoaded', loadArticles);
+document.addEventListener('DOMContentLoaded', () => {
+    loadArticles();
+    initializeImageUpload();
+});
+
+// Initialize Quill editor with custom image handler
+function initializeQuill() {
+    if (quillEditor) {
+        return; // Already initialized
+    }
+
+    const toolbarOptions = [
+        [{ 'header': [1, 2, 3, 4, 5, 6, false] }],
+        [{ 'font': [] }],
+        ['bold', 'italic', 'underline', 'strike'],
+        [{ 'color': [] }, { 'background': [] }],
+        [{ 'script': 'sub' }, { 'script': 'super' }],
+        [{ 'indent': '-1' }, { 'indent': '+1' }],
+        [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+        ['blockquote', 'code-block'],
+        [{ 'direction': 'rtl' }],
+        [{ 'align': [] }],
+        ['link', 'image', 'video']
+        // [{ 'size': ['small', false, 'large', 'huge'] }],
+        // [{ 'header': 1 }, { 'header': 2 }],
+        // ['clean'],
+    ];
+    console.log("content -> ", currentArticleContent);
+
+    quillEditor = new Quill('#editor', {
+        theme: 'snow',
+        modules: {
+            toolbar: {
+                container: toolbarOptions,
+                handlers: {
+                    'image': customImageHandler
+                }
+            }
+        }
+    });
+
+    quillEditor.clipboard.dangerouslyPasteHTML(0, currentArticleContent);
+}
+
+// Custom image handler for Quill
+function customImageHandler() {
+    const input = document.createElement('input');
+    input.setAttribute('type', 'file');
+    input.setAttribute('accept', 'image/*');
+    input.click();
+
+    input.onchange = async () => {
+        const file = input.files[0];
+        if (!file) return;
+
+        try {
+            // Upload image and get the path
+            const imagePath = await uploadImage(file, currentArticleId || generateTempId());
+
+            // Insert image into editor
+            const range = quillEditor.getSelection();
+            quillEditor.insertEmbed(range.index, 'image', imagePath);
+
+            // Add to images array
+            if (!articleImages.find(img => img.path === imagePath)) {
+                articleImages.push({
+                    filename: file.name,
+                    path: imagePath,
+                    size: file.size,
+                    type: file.type
+                });
+                updateImagesList();
+            }
+        } catch (error) {
+            console.error('Error uploading image:', error);
+            showError('Errore nel caricamento dell\'immagine');
+        }
+    };
+}
+
+// Generate temporary ID for new articles
+function generateTempId() {
+    return 'temp_' + Date.now();
+}
+
+// Upload image to server
+async function uploadImage(file, articleId) {
+    const formData = new FormData();
+    formData.append('image', file);
+    formData.append('articleId', articleId);
+
+    const response = await fetch('/api/images/upload', {
+        method: 'POST',
+        body: formData
+    });
+
+    const result = await response.json();
+    if (!result.success) {
+        throw new Error(result.error || 'Upload failed');
+    }
+
+    return result.imagePath;
+}
+
+// Initialize image upload area
+function initializeImageUpload() {
+    const uploadArea = document.getElementById('imageUploadArea');
+    const imageInput = document.getElementById('imageInput');
+
+    uploadArea.addEventListener('click', () => {
+        imageInput.click();
+    });
+
+    uploadArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadArea.classList.add('dragover');
+    });
+
+    uploadArea.addEventListener('dragleave', () => {
+        uploadArea.classList.remove('dragover');
+    });
+
+    uploadArea.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        uploadArea.classList.remove('dragover');
+
+        const files = Array.from(e.dataTransfer.files).filter(file =>
+            file.type.startsWith('image/')
+        );
+
+        await handleImageFiles(files);
+    });
+
+    imageInput.addEventListener('change', async (e) => {
+        await handleImageFiles(Array.from(e.target.files));
+    });
+}
+
+// Handle image files upload
+async function handleImageFiles(files) {
+    const articleId = currentArticleId || generateTempId();
+
+    for (const file of files) {
+        try {
+            const imagePath = await uploadImage(file, articleId);
+
+            if (!articleImages.find(img => img.path === imagePath)) {
+                articleImages.push({
+                    filename: file.name,
+                    path: imagePath,
+                    size: file.size,
+                    type: file.type
+                });
+            }
+        } catch (error) {
+            console.error('Error uploading image:', error);
+            showError(`Errore nel caricamento di ${file.name}`);
+        }
+    }
+
+    updateImagesList();
+}
+
+// Update images list display
+function updateImagesList() {
+    const container = document.getElementById('uploadedImages');
+    const featuredSelect = document.getElementById('featuredImage');
+
+    // Clear existing content
+    container.innerHTML = '';
+    featuredSelect.innerHTML = '<option value="">Nessuna immagine in evidenza</option>';
+
+    articleImages.forEach((image, index) => {
+        // Add to visual list
+        const imageDiv = document.createElement('div');
+        imageDiv.className = 'uploaded-image';
+        imageDiv.innerHTML = `
+            <img src="${image.path}" alt="${image.filename}" title="${image.filename}">
+            <button class="remove-image" onclick="removeImage(${index})">&times;</button>
+        `;
+        container.appendChild(imageDiv);
+
+        // Add to featured image select
+        const option = document.createElement('option');
+        option.value = image.path;
+        option.textContent = image.filename;
+        featuredSelect.appendChild(option);
+    });
+}
+
+// Remove image
+async function removeImage(index) {
+    const image = articleImages[index];
+
+    try {
+        const response = await fetch('/api/images/delete', {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ imagePath: image.path })
+        });
+
+        const result = await response.json();
+        if (result.success) {
+            articleImages.splice(index, 1);
+            updateImagesList();
+            showSuccess('Immagine rimossa');
+        } else {
+            showError('Errore nella rimozione dell\'immagine');
+        }
+    } catch (error) {
+        console.error('Error removing image:', error);
+        showError('Errore di connessione');
+    }
+}
+
+// Tab switching functionality
+function switchTab(tabName) {
+    // Hide all tabs
+    document.querySelectorAll('.tab-content').forEach(tab => {
+        tab.classList.remove('active');
+    });
+
+    document.querySelectorAll('.tab-button').forEach(btn => {
+        btn.classList.remove('active');
+    });
+
+    // Show selected tab
+    document.getElementById(`${tabName}Tab`).classList.add('active');
+    event.target.classList.add('active');
+
+    // Initialize Quill when content tab is opened
+    if (tabName === 'content') {
+        setTimeout(() => {
+            initializeQuill();
+        }, 100);
+    }
+}
 
 // Article validation schema
 const validateArticle = (article) => {
     const errors = {};
-
-    // ID validation
-    if (!article.id || article.id.trim() === '') {
-        errors.id = 'ID articolo è obbligatorio';
-    } else if (!/^[a-zA-Z0-9-_]+$/.test(article.id)) {
-        errors.id = 'ID può contenere solo lettere, numeri, trattini e underscore';
-    } else if (articles.some(a => a.id === article.id && a.id !== editingId)) {
-        errors.id = 'Esiste già un articolo con questo ID';
-    }
 
     // Title validation
     if (!article.title || article.title.trim() === '') {
@@ -68,21 +301,22 @@ function renderArticles() {
     }
 
     const articlesHtml = articles.map(article => `
-                <div class="article-card">
-                    <div class="article-status status-${article.status}">${getStatusLabel(article.status)}</div>
-                    <div class="article-title">${escapeHtml(article.title)}</div>
-                    <div class="article-excerpt">${escapeHtml(article.excerpt)}</div>
-                    <div class="article-meta">
-                        ${article.category} • ${formatDate(article.date)} • ${article.author}
-                    </div>
-                    <div class="article-actions">
-                        <button class="btn btn-small" onclick="editArticle('${article.id}')">Modifica</button>
-                        <button class="btn btn-small ${article.status === 'published' ? '' : 'btn-success'}" 
-                                onclick="toggleStatus('${article.id}')">${article.status === 'published' ? 'Nascondi' : 'Pubblica'}</button>
-                        <button class="btn btn-small btn-danger" onclick="deleteArticle('${article.id}')">Elimina</button>
-                    </div>
-                </div>
-            `).join('');
+        <div class="article-card">
+            <div class="article-status status-${article.status}">${getStatusLabel(article.status)}</div>
+            <div class="article-title">${escapeHtml(article.title)}</div>
+            <div class="article-excerpt">${escapeHtml(article.excerpt)}</div>
+            <div class="article-meta">
+                ${article.category} • ${formatDate(article.date)} • ${article.author}
+                ${article.images && article.images.length > 0 ? ` • ${article.images.length} immagini` : ''}
+            </div>
+            <div class="article-actions">
+                <button class="btn btn-small" onclick="editArticle('${article.id}')">Modifica</button>
+                <button class="btn btn-small ${article.status === 'published' ? '' : 'btn-success'}" 
+                        onclick="toggleStatus('${article.id}')">${article.status === 'published' ? 'Nascondi' : 'Pubblica'}</button>
+                <button class="btn btn-small btn-danger" onclick="deleteArticle('${article.id}')">Elimina</button>
+            </div>
+        </div>
+    `).join('');
 
     container.innerHTML = `<div class="articles-grid">${articlesHtml}</div>`;
 }
@@ -91,6 +325,9 @@ function renderArticles() {
 function openNewArticleModal() {
     isEditing = false;
     editingId = null;
+    currentArticleId = null;
+    articleImages = [];
+
     document.getElementById('modalTitle').textContent = 'Nuovo Articolo';
     document.getElementById('articleForm').reset();
 
@@ -98,25 +335,59 @@ function openNewArticleModal() {
     const authorName = getSetting('authorName', 'author');
     document.getElementById('articleAuthor').value = authorName;
 
+    // Clear editor and images
+    // if (quillEditor) {
+    //     quillEditor.setText('');
+    // }
+    updateImagesList();
+
+    initializeQuill();
+
     document.getElementById('articleModal').style.display = 'block';
     clearErrors();
 }
 
 // Edit article
-function editArticle(id) {
+async function editArticle(id) {
     const article = articles.find(a => a.id === id);
     if (!article) return;
 
     isEditing = true;
     editingId = id;
+    currentArticleId = id;
+
     document.getElementById('modalTitle').textContent = 'Modifica Articolo';
 
-    // Populate form
+    // Populate basic form
     document.getElementById('articleTitle').value = article.title;
     document.getElementById('articleExcerpt').value = article.excerpt;
     document.getElementById('articleCategory').value = article.category;
     document.getElementById('articleStatus').value = article.status;
     document.getElementById('articleAuthor').value = article.author;
+
+    // Set featured image
+    if (article.featured_image) {
+        document.getElementById('featuredImage').value = article.featured_image;
+    }
+
+    // Load article images
+    articleImages = article.images || [];
+    updateImagesList();
+
+    // Load article content
+    try {
+        const contentResponse = await fetch(`/api/articles/${id}/content`);
+        const contentResult = await contentResponse.json();
+
+        if (contentResult.success) {
+            currentArticleContent = contentResult.content || '';
+            // quillEditor.root.innerHTML = contentResult.content || '';
+        }
+    } catch (error) {
+        console.error('Error loading article content:', error);
+    }
+
+    initializeQuill();
 
     document.getElementById('articleModal').style.display = 'block';
     clearErrors();
@@ -125,37 +396,38 @@ function editArticle(id) {
 // Close modal
 function closeModal() {
     document.getElementById('articleModal').style.display = 'none';
+
+    // Reset state
+    articleImages = [];
+    currentArticleId = null;
+    currentArticleContent = null;
+    if (quillEditor) {
+        quillEditor.setText('');
+    }
+
     clearErrors();
 }
 
 // Function to generate article ID from date and title
 function generateArticleId(title) {
-    // Get current date in YYYYMMDD format
     const now = new Date();
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const day = String(now.getDate()).padStart(2, '0');
     const datePrefix = `${year}${month}${day}`;
 
-    // Create title summary
     const titleSummary = title
         .toLowerCase()
         .trim()
-        // Remove special characters and replace spaces with hyphens
         .replace(/[^\w\s-]/g, '')
         .replace(/\s+/g, '-')
-        // Remove multiple consecutive hyphens
         .replace(/-+/g, '-')
-        // Remove leading/trailing hyphens
         .replace(/^-+|-+$/g, '')
-        // Limit to first 30 characters for reasonable length
         .substring(0, 30)
-        // Remove trailing hyphen if substring cut in the middle
         .replace(/-+$/, '');
 
     const baseId = `${datePrefix}-${titleSummary}`;
 
-    // Check for duplicates and add counter if needed
     let finalId = baseId;
     let counter = 1;
 
@@ -167,12 +439,20 @@ function generateArticleId(title) {
     return finalId;
 }
 
-// Updated form submission handler - replace the existing one
+// Enhanced form submission handler
 document.getElementById('articleForm').addEventListener('submit', async (e) => {
     e.preventDefault();
 
     const title = document.getElementById('articleTitle').value.trim();
     const generatedId = isEditing ? editingId : generateArticleId(title);
+
+    // Update currentArticleId for new articles
+    if (!isEditing) {
+        currentArticleId = generatedId;
+    }
+
+    const content = quillEditor ? quillEditor.root.innerHTML : '';
+    const featuredImage = document.getElementById('featuredImage').value;
 
     const formData = {
         id: generatedId,
@@ -182,10 +462,11 @@ document.getElementById('articleForm').addEventListener('submit', async (e) => {
         status: document.getElementById('articleStatus').value,
         author: document.getElementById('articleAuthor').value.trim(),
         date: isEditing ? (articles.find(a => a.id === editingId)?.date || new Date().toISOString().split('T')[0]) : new Date().toISOString().split('T')[0],
-        featured_image: '',
-        images: [],
+        featured_image: featuredImage,
+        images: articleImages,
         slug: `${generatedId}/${generatedId}.html`,
-        tags: []
+        tags: [],
+        content: content
     };
 
     // Validate
@@ -196,51 +477,64 @@ document.getElementById('articleForm').addEventListener('submit', async (e) => {
     }
 
     try {
-        // Update the local articles array first
+        // First save the article metadata
         if (isEditing) {
             const index = articles.findIndex(a => a.id === editingId);
             if (index !== -1) {
-                articles[index] = formData;
+                articles[index] = { ...formData };
+                delete articles[index].content; // Don't store content in JSON
             }
         } else {
-            articles.push(formData);
+            const articleMeta = { ...formData };
+            delete articleMeta.content;
+            articles.push(articleMeta);
         }
 
-        // Send the updated articles array to the API
-        const response = await fetch('/api/articles/', {
-            method: 'PUT', // Always PUT since we're updating the entire array
+        // Save articles JSON
+        const articlesResponse = await fetch('/api/articles/', {
+            method: 'PUT',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify(articles)
         });
 
-        const result = await response.json();
+        const articlesResult = await articlesResponse.json();
 
-        if (result.success) {
-            renderArticles();
-            closeModal();
-            showSuccess(isEditing ? 'Articolo aggiornato!' : 'Articolo creato!');
-        } else {
-            // Revert the local changes if API call failed
-            if (isEditing) {
-                // Reload articles to get back to original state
-                loadArticles();
-            } else {
-                // Remove the added article
-                articles.pop();
-            }
-            showError(result.error || 'Errore nel salvataggio');
+        if (!articlesResult.success) {
+            throw new Error(articlesResult.error || 'Failed to save article metadata');
         }
+
+        // Save article content (HTML)
+        const contentResponse = await fetch(`/api/articles/${generatedId}/content`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ content: content })
+        });
+
+        const contentResult = await contentResponse.json();
+
+        if (!contentResult.success) {
+            throw new Error(contentResult.error || 'Failed to save article content');
+        }
+
+        renderArticles();
+        closeModal();
+        showSuccess(isEditing ? 'Articolo aggiornato!' : 'Articolo creato!');
+
     } catch (error) {
         console.error('Error saving article:', error);
-        // Revert the local changes if API call failed
+
+        // Revert changes on error
         if (isEditing) {
             loadArticles();
         } else {
             articles.pop();
         }
-        showError('Errore di connessione');
+
+        showError(error.message || 'Errore nel salvataggio');
     }
 });
 
@@ -267,13 +561,11 @@ async function toggleStatus(id) {
             showSuccess('Status aggiornato!');
         } else {
             showError('Errore nell\'aggiornamento dello status');
-            // Revert status
             article.status = article.status === 'published' ? 'draft' : 'published';
         }
     } catch (error) {
         console.error('Error updating status:', error);
         showError('Errore di connessione');
-        // Revert status
         article.status = article.status === 'published' ? 'draft' : 'published';
     }
 }
@@ -284,12 +576,33 @@ async function deleteArticle(id) {
         return;
     }
 
-    const article = articles.find(a => a.id === id);
-    if (!article) return;
-
-    article.status = 'deleted';
-
     try {
+        // Delete article content file first
+        const contentResponse = await fetch(`/api/articles/${id}/content`, {
+            method: 'DELETE'
+        });
+
+        // Delete article images
+        const article = articles.find(a => a.id === id);
+        if (article && article.images) {
+            for (const image of article.images) {
+                try {
+                    await fetch('/api/images/delete', {
+                        method: 'DELETE',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ imagePath: image.path })
+                    });
+                } catch (error) {
+                    console.warn('Error deleting image:', error);
+                }
+            }
+        }
+
+        // Remove from articles array and update
+        articles = articles.filter(a => a.id !== id);
+
         const response = await fetch('/api/articles/', {
             method: 'PUT',
             headers: {
@@ -305,49 +618,14 @@ async function deleteArticle(id) {
             showSuccess('Articolo eliminato!');
         } else {
             showError('Errore nell\'eliminazione');
+            // Reload articles to restore state
+            loadArticles();
         }
     } catch (error) {
         console.error('Error deleting article:', error);
         showError('Errore di connessione');
-    }
-}
-
-// Bulk publish drafts
-async function bulkPublish() {
-    const drafts = articles.filter(a => a.status === 'draft');
-    if (drafts.length === 0) {
-        showInfo('Nessuna bozza da pubblicare');
-        return;
-    }
-
-    if (!confirm(`Pubblicare ${drafts.length} bozze?`)) {
-        return;
-    }
-
-    drafts.forEach(article => {
-        article.status = 'published';
-    });
-
-    try {
-        const response = await fetch('/api/articles/', {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(articles)
-        });
-
-        const result = await response.json();
-
-        if (result.success) {
-            renderArticles();
-            showSuccess(`${drafts.length} articoli pubblicati!`);
-        } else {
-            showError('Errore nella pubblicazione');
-        }
-    } catch (error) {
-        console.error('Error bulk publishing:', error);
-        showError('Errore di connessione');
+        // Reload articles to restore state
+        loadArticles();
     }
 }
 
@@ -388,63 +666,68 @@ function clearErrors() {
 }
 
 function showSuccess(message) {
-    // Simple toast notification
     const toast = document.createElement('div');
     toast.style.cssText = `
-                position: fixed;
-                top: 20px;
-                right: 20px;
-                background: #27ae60;
-                color: white;
-                padding: 15px 20px;
-                border-radius: 5px;
-                z-index: 1001;
-            `;
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: #27ae60;
+        color: white;
+        padding: 15px 20px;
+        border-radius: 5px;
+        z-index: 1001;
+    `;
     toast.textContent = message;
     document.body.appendChild(toast);
 
     setTimeout(() => {
-        document.body.removeChild(toast);
+        if (document.body.contains(toast)) {
+            document.body.removeChild(toast);
+        }
     }, 3000);
 }
 
 function showError(message) {
     const toast = document.createElement('div');
     toast.style.cssText = `
-                position: fixed;
-                top: 20px;
-                right: 20px;
-                background: #e74c3c;
-                color: white;
-                padding: 15px 20px;
-                border-radius: 5px;
-                z-index: 1001;
-            `;
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: #e74c3c;
+        color: white;
+        padding: 15px 20px;
+        border-radius: 5px;
+        z-index: 1001;
+    `;
     toast.textContent = message;
     document.body.appendChild(toast);
 
     setTimeout(() => {
-        document.body.removeChild(toast);
+        if (document.body.contains(toast)) {
+            document.body.removeChild(toast);
+        }
     }, 3000);
 }
 
 function showInfo(message) {
     const toast = document.createElement('div');
     toast.style.cssText = `
-                position: fixed;
-                top: 20px;
-                right: 20px;
-                background: #3498db;
-                color: white;
-                padding: 15px 20px;
-                border-radius: 5px;
-                z-index: 1001;
-            `;
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: #3498db;
+        color: white;
+        padding: 15px 20px;
+        border-radius: 5px;
+        z-index: 1001;
+    `;
     toast.textContent = message;
     document.body.appendChild(toast);
 
     setTimeout(() => {
-        document.body.removeChild(toast);
+        if (document.body.contains(toast)) {
+            document.body.removeChild(toast);
+        }
     }, 3000);
 }
 
@@ -453,5 +736,10 @@ window.onclick = function (event) {
     const modal = document.getElementById('articleModal');
     if (event.target === modal) {
         closeModal();
+    }
+
+    const settingsModal = document.getElementById('settingsModal');
+    if (event.target === settingsModal) {
+        closeSettingsModal();
     }
 };

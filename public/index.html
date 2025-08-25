@@ -6,6 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gestore Articoli - Microblog</title>
     <link rel="stylesheet" href="/styles/main.css">
+    <!-- Quill CSS -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.snow.min.css" rel="stylesheet">
 </head>
 
 <body>
@@ -19,9 +21,6 @@
             <button class="btn btn-success" onclick="openNewArticleModal()">Nuovo Articolo</button>
             <button class="btn" onclick="loadArticles()">Aggiorna Lista</button>
             <button class="btn btn-secondary" onclick="openSettingsModal()">⚙️ Impostazioni</button>
-            <!--
-            <button class="btn" onclick="bulkPublish()">Pubblica Bozze</button>
-            -->
         </div>
 
         <div id="articlesContainer">
@@ -29,7 +28,7 @@
         </div>
     </div>
 
-    <!-- Modal per nuovo/modifica articolo -->
+    <!-- Enhanced Modal per nuovo/modifica articolo -->
     <div id="articleModal" class="modal">
         <div class="modal-content">
             <span class="close" onclick="closeModal()">&times;</span>
@@ -72,6 +71,31 @@
                 <div class="form-group">
                     <label for="articleAuthor">Autore</label>
                     <input type="text" id="articleAuthor" value="author" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="featuredImage">Immagine in Evidenza</label>
+                    <select id="featuredImage">
+                        <option value="">Nessuna immagine in evidenza</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Gestione Immagini</label>
+                    <div class="image-upload-area" id="imageUploadArea">
+                        <p>Trascina le immagini qui o clicca per selezionare</p>
+                        <input type="file" id="imageInput" multiple accept="image/*" style="display: none;">
+                    </div>
+                    <div id="uploadedImages" class="uploaded-images"></div>
+                    <div class="error" id="imagesError"></div>
+                </div>
+
+                <div class="form-group editor-group">
+                    <label for="editor">Contenuto Articolo</label>
+                    <div class="editor-container">
+                        <div id="editor"></div>
+                    </div>
+                    <div class="error" id="contentError"></div>
                 </div>
 
                 <div style="text-align: right; margin-top: 30px;">
@@ -118,6 +142,8 @@
         </div>
     </div>
 
+    <!-- Quill JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.min.js"></script>
     <script type="text/javascript" src="/js/articles.js"></script>
     <script type="text/javascript" src="/js/settings.js"></script>
 </body>

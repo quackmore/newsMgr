@@ -1,3 +1,5 @@
+import { exec } from 'child_process';
+import os from 'os';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
@@ -35,6 +37,29 @@ app.get('*path', (req, res) => {
 // Start the server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  let startCommand;
+
+  switch (os.platform()) {
+    case 'win32':
+      startCommand = `start http://localhost:${PORT}`;
+      break;
+    case 'darwin':
+      startCommand = `open http://localhost:${PORT}`;
+      break;
+    default:
+      // For Linux or other OS, use xdg-open
+      startCommand = `xdg-open http://localhost:${PORT}`;
+      break;
+  }
+
+  // FIXME: commented for debug
+  // exec(startCommand, (error) => {
+  //   if (error) {
+  //     console.error(`Error opening browser: ${error.message}`);
+  //     return;
+  //   }
+  //   console.log(`Opened http://localhost:${PORT} in your browser.`);
+  // });
 });
 
 export { app };
