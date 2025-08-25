@@ -254,6 +254,7 @@ h1 {
     margin-bottom: 25px;
 }
 
+/*
 .image-upload-area {
     border: 2px dashed #ddd;
     border-radius: 5px;
@@ -272,6 +273,7 @@ h1 {
     border-color: #007bff;
     background-color: #f8f9fa;
 }
+*/
 
 .uploaded-images {
     display: flex;
@@ -309,6 +311,7 @@ h1 {
     line-height: 1;
 }
 
+/*
 .content-preview {
     max-height: 200px;
     overflow-y: auto;
@@ -348,3 +351,4 @@ h1 {
 .tab-content.active {
     display: block;
 }
+    */

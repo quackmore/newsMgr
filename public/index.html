@@ -8,19 +8,22 @@
     <link rel="stylesheet" href="/styles/main.css">
     <!-- Quill CSS -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.snow.min.css" rel="stylesheet">
+    <link rel="icon" type="image/png" href="/favicon.png">
 </head>
 
 <body>
     <div class="container">
         <header>
             <h1>Gestore Articoli</h1>
-            <p class="subtitle">Gestisci gli articoli del tuo microblog</p>
+            <p class="subtitle">Gestisci le news che compaiono su www.ambvillagdogna.it</p>
         </header>
 
         <div class="actions">
             <button class="btn btn-success" onclick="openNewArticleModal()">Nuovo Articolo</button>
             <button class="btn" onclick="loadArticles()">Aggiorna Lista</button>
             <button class="btn btn-secondary" onclick="openSettingsModal()">⚙️ Impostazioni</button>
+            <a href="https://www.flaticon.com/free-icons/marketing" title="marketing icons">Icone create da Freepik -
+                Flaticon</a>
         </div>
 
         <div id="articlesContainer">
@@ -81,11 +84,7 @@
                 </div>
 
                 <div class="form-group">
-                    <label>Gestione Immagini</label>
-                    <div class="image-upload-area" id="imageUploadArea">
-                        <p>Trascina le immagini qui o clicca per selezionare</p>
-                        <input type="file" id="imageInput" multiple accept="image/*" style="display: none;">
-                    </div>
+                    <label>Elenco Immagini</label>
                     <div id="uploadedImages" class="uploaded-images"></div>
                     <div class="error" id="imagesError"></div>
                 </div>

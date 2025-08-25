@@ -3,100 +3,109 @@ import path from 'path';
 import { userConfig } from '../conf/conf.js';
 
 const ARTICLES_DIR = `${userConfig.get('ambDataPath')}/articles/`;
-const LIST_FILE = path.join(ARTICLES_DIR, 'list.json');
 
 const imagesController = {
     async upload(req, res) {
         try {
-            const listData = await fs.readFile(LIST_FILE, 'utf8');
-            const articles = JSON.parse(listData);
+            if (!req.file) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'No image file provided'
+                });
+            }
+
+            const { articleId } = req.body;
+            if (!articleId) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Article ID is required'
+                });
+            }
+
+            const articleDir = path.join(ARTICLES_DIR, articleId);
+            const originalFilename = req.file.originalname;
+            const filePath = path.join(articleDir, originalFilename);
+
+            // Ensure article directory exists
+            try {
+                await fs.mkdir(articleDir, { recursive: true });
+            } catch (error) {
+                return res.status(500).json({
+                    success: false,
+                    error: 'Failed to create article directory'
+                });
+            }
+
+            // Check for duplicate files
+            try {
+                await fs.access(filePath);
+                return res.status(409).json({
+                    success: false,
+                    error: 'File already exists'
+                });
+            } catch (error) {
+                // File doesn't exist, proceed with upload
+            }
+
+            // Save the file
+            await fs.writeFile(filePath, req.file.buffer);
+
+            // Return the web-accessible path
+            const imagePath = `/articles/${articleId}/${originalFilename}`;
 
             res.json({
                 success: true,
-                data: articles
+                imagePath: imagePath
             });
+
         } catch (error) {
-            if (error.code === 'ENOENT') {
-                // If list.json doesn't exist, return empty array
-                res.json({
-                    success: true,
-                    data: []
-                });
-            } else {
-                console.error('Error reading list.json:', error);
-                res.status(500).json({
-                    success: false,
-                    error: 'Failed to read articles list'
-                });
-            }
+            console.error('Error uploading image:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to upload image'
+            });
         }
     },
 
     async delete(req, res) {
         try {
-            const articleData = req.body;
-            const { id } = articleData;
+            const { imagePath } = req.body;
 
-            // Create article directory
-            const articleDir = path.join(ARTICLES_DIR, id);
-            await fs.mkdir(articleDir, { recursive: true });
-
-            // Read current list
-            let articles = [];
-            try {
-                const listData = await fs.readFile(LIST_FILE, 'utf8');
-                articles = JSON.parse(listData);
-            } catch (error) {
-                // If list doesn't exist, start with empty array
-                if (error.code !== 'ENOENT') {
-                    throw error;
-                }
-            }
-
-            // Check if article already exists
-            if (articles.find(article => article.id === id)) {
-                return res.status(409).json({
+            if (!imagePath) {
+                return res.status(400).json({
                     success: false,
-                    error: 'Article with this ID already exists'
+                    error: 'Image path is required'
                 });
             }
 
-            // Add to articles list
-            articles.push(articleData);
+            // Convert web path to filesystem path
+            // imagePath format: /articles/{articleId}/{filename}
+            const relativePath = imagePath.replace('/articles/', '');
+            const fullPath = path.join(ARTICLES_DIR, relativePath);
 
-            // Write updated list
-            await fs.writeFile(LIST_FILE, JSON.stringify(articles, null, 2));
+            // Check if file exists
+            try {
+                await fs.access(fullPath);
+            } catch (error) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Image not found'
+                });
+            }
 
-            // Create article JSON file
-            const articleJsonPath = path.join(articleDir, `${id}.json`);
-            const { id: _, ...articleMetadata } = articleData; // Remove id from metadata file
-            await fs.writeFile(articleJsonPath, JSON.stringify(articleMetadata, null, 2));
-
-            // Create empty HTML file
-            const articleHtmlPath = path.join(articleDir, `${id}.html`);
-            const initialHtml = `<!DOCTYPE html>
-<html lang="it">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${articleData.title}</title>
-</head>
-<body>
-    <h1>${articleData.title}</h1>
-    <!-- Article content goes here -->
-</body>
-</html>`;
-            await fs.writeFile(articleHtmlPath, initialHtml);
+            // Delete the file
+            await fs.unlink(fullPath);
 
             res.json({
                 success: true,
-                data: articleData
+                imagePath: imagePath
             });
+
         } catch (error) {
-            console.error('Error creating article:', error);
+            console.error('Error deleting image:', error);
             res.status(500).json({
                 success: false,
-                error: 'Failed to create article'
+                error: 'Failed to delete image'
             });
         }
     }

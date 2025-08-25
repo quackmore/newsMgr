@@ -9,7 +9,6 @@ let currentArticleContent = null;
 // Load articles on page load
 document.addEventListener('DOMContentLoaded', () => {
     loadArticles();
-    initializeImageUpload();
 });
 
 // Initialize Quill editor with custom image handler
@@ -34,7 +33,6 @@ function initializeQuill() {
         // [{ 'header': 1 }, { 'header': 2 }],
         // ['clean'],
     ];
-    console.log("content -> ", currentArticleContent);
 
     quillEditor = new Quill('#editor', {
         theme: 'snow',
@@ -64,7 +62,7 @@ function customImageHandler() {
 
         try {
             // Upload image and get the path
-            const imagePath = await uploadImage(file, currentArticleId || generateTempId());
+            const imagePath = await uploadImage(file, currentArticleId || generateArticleId());
 
             // Insert image into editor
             const range = quillEditor.getSelection();
@@ -87,11 +85,6 @@ function customImageHandler() {
     };
 }
 
-// Generate temporary ID for new articles
-function generateTempId() {
-    return 'temp_' + Date.now();
-}
-
 // Upload image to server
 async function uploadImage(file, articleId) {
     const formData = new FormData();
@@ -109,65 +102,6 @@ async function uploadImage(file, articleId) {
     }
 
     return result.imagePath;
-}
-
-// Initialize image upload area
-function initializeImageUpload() {
-    const uploadArea = document.getElementById('imageUploadArea');
-    const imageInput = document.getElementById('imageInput');
-
-    uploadArea.addEventListener('click', () => {
-        imageInput.click();
-    });
-
-    uploadArea.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        uploadArea.classList.add('dragover');
-    });
-
-    uploadArea.addEventListener('dragleave', () => {
-        uploadArea.classList.remove('dragover');
-    });
-
-    uploadArea.addEventListener('drop', async (e) => {
-        e.preventDefault();
-        uploadArea.classList.remove('dragover');
-
-        const files = Array.from(e.dataTransfer.files).filter(file =>
-            file.type.startsWith('image/')
-        );
-
-        await handleImageFiles(files);
-    });
-
-    imageInput.addEventListener('change', async (e) => {
-        await handleImageFiles(Array.from(e.target.files));
-    });
-}
-
-// Handle image files upload
-async function handleImageFiles(files) {
-    const articleId = currentArticleId || generateTempId();
-
-    for (const file of files) {
-        try {
-            const imagePath = await uploadImage(file, articleId);
-
-            if (!articleImages.find(img => img.path === imagePath)) {
-                articleImages.push({
-                    filename: file.name,
-                    path: imagePath,
-                    size: file.size,
-                    type: file.type
-                });
-            }
-        } catch (error) {
-            console.error('Error uploading image:', error);
-            showError(`Errore nel caricamento di ${file.name}`);
-        }
-    }
-
-    updateImagesList();
 }
 
 // Update images list display
@@ -221,29 +155,6 @@ async function removeImage(index) {
     } catch (error) {
         console.error('Error removing image:', error);
         showError('Errore di connessione');
-    }
-}
-
-// Tab switching functionality
-function switchTab(tabName) {
-    // Hide all tabs
-    document.querySelectorAll('.tab-content').forEach(tab => {
-        tab.classList.remove('active');
-    });
-
-    document.querySelectorAll('.tab-button').forEach(btn => {
-        btn.classList.remove('active');
-    });
-
-    // Show selected tab
-    document.getElementById(`${tabName}Tab`).classList.add('active');
-    event.target.classList.add('active');
-
-    // Initialize Quill when content tab is opened
-    if (tabName === 'content') {
-        setTimeout(() => {
-            initializeQuill();
-        }, 100);
     }
 }
 
@@ -335,10 +246,6 @@ function openNewArticleModal() {
     const authorName = getSetting('authorName', 'author');
     document.getElementById('articleAuthor').value = authorName;
 
-    // Clear editor and images
-    // if (quillEditor) {
-    //     quillEditor.setText('');
-    // }
     updateImagesList();
 
     initializeQuill();
