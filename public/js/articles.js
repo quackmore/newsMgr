@@ -1,17 +1,52 @@
 let articles = [];
-let isEditing = false;
-let editingId = null;
 let quillEditor = null;
-let articleImages = [];
-let currentArticleId = null;
-let currentArticleContent = null;
+let currentArticle = null;
+let autoSaveTimeout = null;
+let isOnline = true;
+let pendingChanges = [];
+
+// Configuration
+const AUTO_SAVE_DELAY = 2000; // 2 seconds debounce
+const RETRY_DELAY = 5000; // 5 seconds retry on failure
 
 // Load articles on page load
 document.addEventListener('DOMContentLoaded', () => {
     loadArticles();
+    setupConnectionMonitoring();
 });
 
-// Initialize Quill editor with custom image handler
+// Connection monitoring
+function setupConnectionMonitoring() {
+    window.addEventListener('online', () => {
+        isOnline = true;
+        processPendingChanges();
+        showInfo('Connessione ripristinata');
+    });
+
+    window.addEventListener('offline', () => {
+        isOnline = false;
+        showInfo('Modalità offline - le modifiche verranno salvate alla riconnessione');
+    });
+}
+
+// Process pending changes when back online
+async function processPendingChanges() {
+    if (!isOnline || pendingChanges.length === 0) return;
+
+    const changes = [...pendingChanges];
+    pendingChanges = [];
+
+    for (const change of changes) {
+        try {
+            await change.operation();
+        } catch (error) {
+            console.error('Failed to sync pending change:', error);
+            pendingChanges.push(change); // Re-queue on failure
+        }
+    }
+}
+
+// Initialize Quill editor with auto-save
 function initializeQuill() {
     if (quillEditor) {
         return; // Already initialized
@@ -29,9 +64,6 @@ function initializeQuill() {
         [{ 'direction': 'rtl' }],
         [{ 'align': [] }],
         ['link', 'image', 'video']
-        // [{ 'size': ['small', false, 'large', 'huge'] }],
-        // [{ 'header': 1 }, { 'header': 2 }],
-        // ['clean'],
     ];
 
     quillEditor = new Quill('#editor', {
@@ -46,11 +78,28 @@ function initializeQuill() {
         }
     });
 
-    quillEditor.clipboard.dangerouslyPasteHTML(0, currentArticleContent);
+    // Auto-save on content changes
+    quillEditor.on('text-change', () => {
+        if (currentArticle) {
+            currentArticle.content = quillEditor.root.innerHTML;
+            scheduleAutoSave('content');
+        }
+    });
+
+    // Load initial content if editing
+    if (currentArticle && currentArticle.content) {
+        quillEditor.clipboard.dangerouslyPasteHTML(0, currentArticle.content);
+    }
 }
 
-// Custom image handler for Quill
+// Custom image handler with immediate article creation
 function customImageHandler() {
+    // Ensure article exists before uploading images
+    if (!currentArticle) {
+        showError('Errore: nessun articolo attivo');
+        return;
+    }
+
     const input = document.createElement('input');
     input.setAttribute('type', 'file');
     input.setAttribute('accept', 'image/*');
@@ -61,23 +110,19 @@ function customImageHandler() {
         if (!file) return;
 
         try {
-            // Upload image and get the path
-            const imagePath = await uploadImage(file, currentArticleId || generateArticleId());
+            // Upload image to specific article
+            const result = await uploadImageToArticle(currentArticle.id, file);
 
             // Insert image into editor
             const range = quillEditor.getSelection();
-            quillEditor.insertEmbed(range.index, 'image', imagePath);
+            quillEditor.insertEmbed(range.index, 'image', result.imagePath);
 
-            // Add to images array
-            if (!articleImages.find(img => img.path === imagePath)) {
-                articleImages.push({
-                    filename: file.name,
-                    path: imagePath,
-                    size: file.size,
-                    type: file.type
-                });
-                updateImagesList();
-            }
+            // Update article images immediately
+            currentArticle.images = result.images;
+            updateImagesList();
+            updateFeaturedImageOptions();
+
+            showSuccess('Immagine caricata');
         } catch (error) {
             console.error('Error uploading image:', error);
             showError('Errore nel caricamento dell\'immagine');
@@ -85,13 +130,12 @@ function customImageHandler() {
     };
 }
 
-// Upload image to server
-async function uploadImage(file, articleId) {
+// Upload image to specific article
+async function uploadImageToArticle(articleId, file) {
     const formData = new FormData();
     formData.append('image', file);
-    formData.append('articleId', articleId);
 
-    const response = await fetch('/api/images/upload', {
+    const response = await fetch(`/api/articles/${articleId}/images`, {
         method: 'POST',
         body: formData
     });
@@ -101,88 +145,110 @@ async function uploadImage(file, articleId) {
         throw new Error(result.error || 'Upload failed');
     }
 
-    return result.imagePath;
+    return result;
 }
 
-// Update images list display
-function updateImagesList() {
-    const container = document.getElementById('uploadedImages');
-    const featuredSelect = document.getElementById('featuredImage');
+// Auto-save scheduler with debouncing
+function scheduleAutoSave(changeType = 'all') {
+    if (!currentArticle) return;
 
-    // Clear existing content
-    container.innerHTML = '';
-    featuredSelect.innerHTML = '<option value="">Nessuna immagine in evidenza</option>';
+    // Clear existing timeout
+    if (autoSaveTimeout) {
+        clearTimeout(autoSaveTimeout);
+    }
 
-    articleImages.forEach((image, index) => {
-        // Add to visual list
-        const imageDiv = document.createElement('div');
-        imageDiv.className = 'uploaded-image';
-        imageDiv.innerHTML = `
-            <img src="${image.path}" alt="${image.filename}" title="${image.filename}">
-            <button class="remove-image" onclick="removeImage(${index})">&times;</button>
-        `;
-        container.appendChild(imageDiv);
+    // Schedule new save
+    autoSaveTimeout = setTimeout(async () => {
+        await performAutoSave(changeType);
+    }, AUTO_SAVE_DELAY);
 
-        // Add to featured image select
-        const option = document.createElement('option');
-        option.value = image.path;
-        option.textContent = image.filename;
-        featuredSelect.appendChild(option);
-    });
+    // Show saving indicator
+    showSavingIndicator();
 }
 
-// Remove image
-async function removeImage(index) {
-    const image = articleImages[index];
+// Perform auto-save operation
+async function performAutoSave(changeType) {
+    if (!currentArticle || !isOnline) {
+        if (!isOnline) {
+            queuePendingChange(() => performAutoSave(changeType));
+        }
+        return;
+    }
 
     try {
-        const response = await fetch('/api/images/delete', {
-            method: 'DELETE',
+        let endpoint;
+        let payload;
+
+        switch (changeType) {
+            case 'content':
+                endpoint = `/api/articles/${currentArticle.id}/content`;
+                payload = { content: currentArticle.content };
+                break;
+            case 'metadata':
+                endpoint = `/api/articles/${currentArticle.id}/metadata`;
+                payload = {
+                    title: currentArticle.title,
+                    excerpt: currentArticle.excerpt,
+                    category: currentArticle.category,
+                    author: currentArticle.author,
+                    featured_image: currentArticle.featured_image
+                };
+                break;
+            default:
+                endpoint = `/api/articles/${currentArticle.id}`;
+                payload = currentArticle;
+                break;
+        }
+
+        const response = await fetch(endpoint, {
+            method: 'PUT',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ imagePath: image.path })
+            body: JSON.stringify(payload)
         });
 
         const result = await response.json();
+
         if (result.success) {
-            articleImages.splice(index, 1);
-            updateImagesList();
-            showSuccess('Immagine rimossa');
+            hideSavingIndicator();
+            
+            // Update local articles array if full save
+            if (changeType === 'all' || changeType === 'metadata') {
+                const index = articles.findIndex(a => a.id === currentArticle.id);
+                if (index >= 0) {
+                    const updatedArticle = { ...currentArticle };
+                    delete updatedArticle.content; // Don't store content in articles list
+                    articles[index] = updatedArticle;
+                } else {
+                    // New article - add to list
+                    const newArticle = { ...currentArticle };
+                    delete newArticle.content;
+                    articles.push(newArticle);
+                }
+                renderArticles();
+            }
         } else {
-            showError('Errore nella rimozione dell\'immagine');
+            throw new Error(result.error || 'Save failed');
         }
     } catch (error) {
-        console.error('Error removing image:', error);
-        showError('Errore di connessione');
+        console.error('Auto-save failed:', error);
+        showError('Errore nel salvataggio automatico');
+        
+        // Retry later if online
+        if (isOnline) {
+            setTimeout(() => scheduleAutoSave(changeType), RETRY_DELAY);
+        }
     }
 }
 
-// Article validation schema
-const validateArticle = (article) => {
-    const errors = {};
-
-    // Title validation
-    if (!article.title || article.title.trim() === '') {
-        errors.title = 'Titolo è obbligatorio';
-    } else if (article.title.length > 200) {
-        errors.title = 'Titolo troppo lungo (max 200 caratteri)';
-    }
-
-    // Excerpt validation
-    if (!article.excerpt || article.excerpt.trim() === '') {
-        errors.excerpt = 'Estratto è obbligatorio';
-    } else if (article.excerpt.length > 500) {
-        errors.excerpt = 'Estratto troppo lungo (max 500 caratteri)';
-    }
-
-    // Category validation
-    if (!article.category || article.category.trim() === '') {
-        errors.category = 'Categoria è obbligatoria';
-    }
-
-    return errors;
-};
+// Queue operation for when back online
+function queuePendingChange(operation) {
+    pendingChanges.push({
+        operation,
+        timestamp: Date.now()
+    });
+}
 
 // Load articles from API
 async function loadArticles() {
@@ -200,6 +266,334 @@ async function loadArticles() {
         console.error('Error loading articles:', error);
         showError('Errore di connessione');
     }
+}
+
+// Open new article modal with immediate creation
+async function openNewArticleModal() {
+    try {
+        // Create new article immediately
+        const articleData = {
+            title: 'Nuovo Articolo',
+            excerpt: '',
+            category: '',
+            status: 'draft',
+            author: getSetting('authorName', 'author'),
+            featured_image: '',
+            images: [],
+            content: ''
+        };
+
+        const response = await fetch('/api/articles/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(articleData)
+        });
+
+        const result = await response.json();
+
+        if (!result.success) {
+            throw new Error(result.error || 'Failed to create article');
+        }
+
+        // Set current article
+        currentArticle = result.article;
+        
+        // Update UI
+        document.getElementById('modalTitle').textContent = 'Nuovo Articolo';
+        populateForm(currentArticle);
+        
+        // Initialize editor
+        initializeQuill();
+        
+        // Show modal
+        document.getElementById('articleModal').style.display = 'block';
+        clearErrors();
+
+        // Focus on title for immediate editing
+        document.getElementById('articleTitle').focus();
+        document.getElementById('articleTitle').select();
+
+        showInfo('Nuovo articolo creato - le modifiche vengono salvate automaticamente');
+
+    } catch (error) {
+        console.error('Error creating article:', error);
+        showError('Errore nella creazione dell\'articolo');
+    }
+}
+
+// Edit existing article
+async function editArticle(id) {
+    try {
+        const response = await fetch(`/api/articles/${id}`);
+        const result = await response.json();
+
+        if (!result.success) {
+            throw new Error(result.error || 'Failed to load article');
+        }
+
+        currentArticle = result.article;
+        
+        document.getElementById('modalTitle').textContent = 'Modifica Articolo';
+        populateForm(currentArticle);
+        
+        initializeQuill();
+        
+        document.getElementById('articleModal').style.display = 'block';
+        clearErrors();
+
+    } catch (error) {
+        console.error('Error loading article:', error);
+        showError('Errore nel caricamento dell\'articolo');
+    }
+}
+
+// Populate form with article data
+function populateForm(article) {
+    document.getElementById('articleTitle').value = article.title || '';
+    document.getElementById('articleExcerpt').value = article.excerpt || '';
+    document.getElementById('articleCategory').value = article.category || '';
+    document.getElementById('articleStatus').value = article.status || 'draft';
+    document.getElementById('articleAuthor').value = article.author || '';
+    document.getElementById('featuredImage').value = article.featured_image || '';
+
+    updateImagesList();
+    updateFeaturedImageOptions();
+
+    // Setup auto-save listeners for form fields
+    setupFormAutoSave();
+}
+
+// Setup auto-save for form fields
+function setupFormAutoSave() {
+    const fields = [
+        'articleTitle',
+        'articleExcerpt', 
+        'articleCategory',
+        'articleStatus',
+        'articleAuthor',
+        'featuredImage'
+    ];
+
+    fields.forEach(fieldId => {
+        const field = document.getElementById(fieldId);
+        if (!field) return;
+
+        // Remove existing listeners to avoid duplicates
+        field.removeEventListener('input', handleFieldChange);
+        field.removeEventListener('change', handleFieldChange);
+
+        // Add new listeners
+        field.addEventListener('input', handleFieldChange);
+        field.addEventListener('change', handleFieldChange);
+    });
+}
+
+// Handle form field changes
+function handleFieldChange(event) {
+    if (!currentArticle) return;
+
+    const fieldId = event.target.id;
+    const value = event.target.value;
+
+    // Update current article
+    switch (fieldId) {
+        case 'articleTitle':
+            currentArticle.title = value;
+            break;
+        case 'articleExcerpt':
+            currentArticle.excerpt = value;
+            break;
+        case 'articleCategory':
+            currentArticle.category = value;
+            break;
+        case 'articleStatus':
+            currentArticle.status = value;
+            break;
+        case 'articleAuthor':
+            currentArticle.author = value;
+            break;
+        case 'featuredImage':
+            currentArticle.featured_image = value;
+            break;
+    }
+
+    // Schedule auto-save for metadata
+    scheduleAutoSave('metadata');
+}
+
+// Update images list display
+function updateImagesList() {
+    if (!currentArticle) return;
+
+    const container = document.getElementById('uploadedImages');
+    container.innerHTML = '';
+
+    if (!currentArticle.images || currentArticle.images.length === 0) return;
+
+    currentArticle.images.forEach((image, index) => {
+        const imageDiv = document.createElement('div');
+        imageDiv.className = 'uploaded-image';
+        imageDiv.innerHTML = `
+            <img src="${image.path}" alt="${image.filename}" title="${image.filename}">
+            <button class="remove-image" onclick="removeImage(${index})">&times;</button>
+        `;
+        container.appendChild(imageDiv);
+    });
+}
+
+// Update featured image options
+function updateFeaturedImageOptions() {
+    if (!currentArticle) return;
+
+    const select = document.getElementById('featuredImage');
+    const currentValue = select.value;
+    
+    select.innerHTML = '<option value="">Nessuna immagine in evidenza</option>';
+
+    if (currentArticle.images && currentArticle.images.length > 0) {
+        currentArticle.images.forEach(image => {
+            const option = document.createElement('option');
+            option.value = image.path;
+            option.textContent = image.filename;
+            select.appendChild(option);
+        });
+    }
+
+    // Restore previous selection if still valid
+    if (currentValue && [...select.options].some(opt => opt.value === currentValue)) {
+        select.value = currentValue;
+    }
+}
+
+// Remove image with immediate save
+async function removeImage(index) {
+    if (!currentArticle || !currentArticle.images || !currentArticle.images[index]) {
+        return;
+    }
+
+    const image = currentArticle.images[index];
+
+    try {
+        const response = await fetch(`/api/articles/${currentArticle.id}/images/${encodeURIComponent(image.filename)}`, {
+            method: 'DELETE'
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            currentArticle.images = result.images;
+            updateImagesList();
+            updateFeaturedImageOptions();
+            
+            // Clear featured image if it was the deleted one
+            if (currentArticle.featured_image === image.path) {
+                currentArticle.featured_image = '';
+                document.getElementById('featuredImage').value = '';
+                scheduleAutoSave('metadata');
+            }
+
+            showSuccess('Immagine rimossa');
+        } else {
+            throw new Error(result.error || 'Failed to delete image');
+        }
+    } catch (error) {
+        console.error('Error removing image:', error);
+        showError('Errore nella rimozione dell\'immagine');
+    }
+}
+
+// Publish/unpublish article
+async function toggleStatus(id) {
+    try {
+        const article = articles.find(a => a.id === id);
+        if (!article) return;
+
+        const newStatus = article.status === 'published' ? 'draft' : 'published';
+
+        const response = await fetch(`/api/articles/${id}/publish`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ status: newStatus })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            article.status = newStatus;
+            renderArticles();
+            
+            // Update current article if it's the same one
+            if (currentArticle && currentArticle.id === id) {
+                currentArticle.status = newStatus;
+                document.getElementById('articleStatus').value = newStatus;
+            }
+
+            showSuccess(`Articolo ${newStatus === 'published' ? 'pubblicato' : 'nascosto'}!`);
+        } else {
+            throw new Error(result.error || 'Failed to update status');
+        }
+    } catch (error) {
+        console.error('Error updating status:', error);
+        showError('Errore nell\'aggiornamento dello status');
+    }
+}
+
+// Delete article
+async function deleteArticle(id) {
+    if (!confirm('Sei sicuro di voler eliminare questo articolo?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/articles/${id}`, {
+            method: 'DELETE'
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            // Remove from local array
+            articles = articles.filter(a => a.id !== id);
+            renderArticles();
+            
+            // Close modal if deleting current article
+            if (currentArticle && currentArticle.id === id) {
+                closeModal();
+            }
+
+            showSuccess('Articolo eliminato!');
+        } else {
+            throw new Error(result.error || 'Failed to delete article');
+        }
+    } catch (error) {
+        console.error('Error deleting article:', error);
+        showError('Errore nell\'eliminazione dell\'articolo');
+    }
+}
+
+// Close modal and cleanup
+function closeModal() {
+    document.getElementById('articleModal').style.display = 'none';
+    
+    // Clear auto-save timeout
+    if (autoSaveTimeout) {
+        clearTimeout(autoSaveTimeout);
+        autoSaveTimeout = null;
+    }
+    
+    // Reset state
+    currentArticle = null;
+    
+    if (quillEditor) {
+        quillEditor.setText('');
+    }
+    
+    hideSavingIndicator();
+    clearErrors();
 }
 
 // Render articles list
@@ -232,311 +626,37 @@ function renderArticles() {
     container.innerHTML = `<div class="articles-grid">${articlesHtml}</div>`;
 }
 
-// Open new article modal
-function openNewArticleModal() {
-    isEditing = false;
-    editingId = null;
-    currentArticleId = null;
-    articleImages = [];
-
-    document.getElementById('modalTitle').textContent = 'Nuovo Articolo';
-    document.getElementById('articleForm').reset();
-
-    // Use configured author name
-    const authorName = getSetting('authorName', 'author');
-    document.getElementById('articleAuthor').value = authorName;
-
-    updateImagesList();
-
-    initializeQuill();
-
-    document.getElementById('articleModal').style.display = 'block';
-    clearErrors();
+// UI Helper Functions
+function showSavingIndicator() {
+    let indicator = document.getElementById('savingIndicator');
+    if (!indicator) {
+        indicator = document.createElement('div');
+        indicator.id = 'savingIndicator';
+        indicator.style.cssText = `
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #f39c12;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 5px;
+            font-size: 14px;
+            z-index: 1001;
+        `;
+        indicator.textContent = 'Salvataggio...';
+        document.body.appendChild(indicator);
+    }
+    indicator.style.display = 'block';
 }
 
-// Edit article
-async function editArticle(id) {
-    const article = articles.find(a => a.id === id);
-    if (!article) return;
-
-    isEditing = true;
-    editingId = id;
-    currentArticleId = id;
-
-    document.getElementById('modalTitle').textContent = 'Modifica Articolo';
-
-    // Populate basic form
-    document.getElementById('articleTitle').value = article.title;
-    document.getElementById('articleExcerpt').value = article.excerpt;
-    document.getElementById('articleCategory').value = article.category;
-    document.getElementById('articleStatus').value = article.status;
-    document.getElementById('articleAuthor').value = article.author;
-
-    // Set featured image
-    if (article.featured_image) {
-        document.getElementById('featuredImage').value = article.featured_image;
-    }
-
-    // Load article images
-    articleImages = article.images || [];
-    updateImagesList();
-
-    // Load article content
-    try {
-        const contentResponse = await fetch(`/api/articles/${id}/content`);
-        const contentResult = await contentResponse.json();
-
-        if (contentResult.success) {
-            currentArticleContent = contentResult.content || '';
-            // quillEditor.root.innerHTML = contentResult.content || '';
-        }
-    } catch (error) {
-        console.error('Error loading article content:', error);
-    }
-
-    initializeQuill();
-
-    document.getElementById('articleModal').style.display = 'block';
-    clearErrors();
-}
-
-// Close modal
-function closeModal() {
-    document.getElementById('articleModal').style.display = 'none';
-
-    // Reset state
-    articleImages = [];
-    currentArticleId = null;
-    currentArticleContent = null;
-    if (quillEditor) {
-        quillEditor.setText('');
-    }
-
-    clearErrors();
-}
-
-// Function to generate article ID from date and title
-function generateArticleId(title) {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const datePrefix = `${year}${month}${day}`;
-
-    const titleSummary = title
-        .toLowerCase()
-        .trim()
-        .replace(/[^\w\s-]/g, '')
-        .replace(/\s+/g, '-')
-        .replace(/-+/g, '-')
-        .replace(/^-+|-+$/g, '')
-        .substring(0, 30)
-        .replace(/-+$/, '');
-
-    const baseId = `${datePrefix}-${titleSummary}`;
-
-    let finalId = baseId;
-    let counter = 1;
-
-    while (articles.some(article => article.id === finalId && article.id !== editingId)) {
-        finalId = `${baseId}-${counter}`;
-        counter++;
-    }
-
-    return finalId;
-}
-
-// Enhanced form submission handler
-document.getElementById('articleForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-
-    const title = document.getElementById('articleTitle').value.trim();
-    const generatedId = isEditing ? editingId : generateArticleId(title);
-
-    // Update currentArticleId for new articles
-    if (!isEditing) {
-        currentArticleId = generatedId;
-    }
-
-    const content = quillEditor ? quillEditor.root.innerHTML : '';
-    const featuredImage = document.getElementById('featuredImage').value;
-
-    const formData = {
-        id: generatedId,
-        title: title,
-        excerpt: document.getElementById('articleExcerpt').value.trim(),
-        category: document.getElementById('articleCategory').value,
-        status: document.getElementById('articleStatus').value,
-        author: document.getElementById('articleAuthor').value.trim(),
-        date: isEditing ? (articles.find(a => a.id === editingId)?.date || new Date().toISOString().split('T')[0]) : new Date().toISOString().split('T')[0],
-        featured_image: featuredImage,
-        images: articleImages,
-        slug: `${generatedId}/${generatedId}.html`,
-        tags: [],
-        content: content
-    };
-
-    // Validate
-    const errors = validateArticle(formData);
-    if (Object.keys(errors).length > 0) {
-        showValidationErrors(errors);
-        return;
-    }
-
-    try {
-        // First save the article metadata
-        if (isEditing) {
-            const index = articles.findIndex(a => a.id === editingId);
-            if (index !== -1) {
-                articles[index] = { ...formData };
-                delete articles[index].content; // Don't store content in JSON
-            }
-        } else {
-            const articleMeta = { ...formData };
-            delete articleMeta.content;
-            articles.push(articleMeta);
-        }
-
-        // Save articles JSON
-        const articlesResponse = await fetch('/api/articles/', {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(articles)
-        });
-
-        const articlesResult = await articlesResponse.json();
-
-        if (!articlesResult.success) {
-            throw new Error(articlesResult.error || 'Failed to save article metadata');
-        }
-
-        // Save article content (HTML)
-        const contentResponse = await fetch(`/api/articles/${generatedId}/content`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ content: content })
-        });
-
-        const contentResult = await contentResponse.json();
-
-        if (!contentResult.success) {
-            throw new Error(contentResult.error || 'Failed to save article content');
-        }
-
-        renderArticles();
-        closeModal();
-        showSuccess(isEditing ? 'Articolo aggiornato!' : 'Articolo creato!');
-
-    } catch (error) {
-        console.error('Error saving article:', error);
-
-        // Revert changes on error
-        if (isEditing) {
-            loadArticles();
-        } else {
-            articles.pop();
-        }
-
-        showError(error.message || 'Errore nel salvataggio');
-    }
-});
-
-// Toggle article status
-async function toggleStatus(id) {
-    const article = articles.find(a => a.id === id);
-    if (!article) return;
-
-    article.status = article.status === 'published' ? 'draft' : 'published';
-
-    try {
-        const response = await fetch('/api/articles/', {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(articles)
-        });
-
-        const result = await response.json();
-
-        if (result.success) {
-            renderArticles();
-            showSuccess('Status aggiornato!');
-        } else {
-            showError('Errore nell\'aggiornamento dello status');
-            article.status = article.status === 'published' ? 'draft' : 'published';
-        }
-    } catch (error) {
-        console.error('Error updating status:', error);
-        showError('Errore di connessione');
-        article.status = article.status === 'published' ? 'draft' : 'published';
+function hideSavingIndicator() {
+    const indicator = document.getElementById('savingIndicator');
+    if (indicator) {
+        indicator.style.display = 'none';
     }
 }
 
-// Delete article
-async function deleteArticle(id) {
-    if (!confirm('Sei sicuro di voler eliminare questo articolo?')) {
-        return;
-    }
-
-    try {
-        // Delete article content file first
-        const contentResponse = await fetch(`/api/articles/${id}/content`, {
-            method: 'DELETE'
-        });
-
-        // Delete article images
-        const article = articles.find(a => a.id === id);
-        if (article && article.images) {
-            for (const image of article.images) {
-                try {
-                    await fetch('/api/images/delete', {
-                        method: 'DELETE',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({ imagePath: image.path })
-                    });
-                } catch (error) {
-                    console.warn('Error deleting image:', error);
-                }
-            }
-        }
-
-        // Remove from articles array and update
-        articles = articles.filter(a => a.id !== id);
-
-        const response = await fetch('/api/articles/', {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(articles)
-        });
-
-        const result = await response.json();
-
-        if (result.success) {
-            renderArticles();
-            showSuccess('Articolo eliminato!');
-        } else {
-            showError('Errore nell\'eliminazione');
-            // Reload articles to restore state
-            loadArticles();
-        }
-    } catch (error) {
-        console.error('Error deleting article:', error);
-        showError('Errore di connessione');
-        // Reload articles to restore state
-        loadArticles();
-    }
-}
-
-// Utility functions
+// Utility functions (existing ones remain the same)
 function getStatusLabel(status) {
     const labels = {
         draft: 'Bozza',
@@ -554,16 +674,6 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
-}
-
-function showValidationErrors(errors) {
-    clearErrors();
-    Object.keys(errors).forEach(field => {
-        const errorElement = document.getElementById(`${field}Error`);
-        if (errorElement) {
-            errorElement.textContent = errors[field];
-        }
-    });
 }
 
 function clearErrors() {
@@ -636,6 +746,12 @@ function showInfo(message) {
             document.body.removeChild(toast);
         }
     }, 3000);
+}
+
+// Settings helper function (needs to be implemented)
+function getSetting(key, defaultValue) {
+    // This would typically read from localStorage or settings API
+    return defaultValue;
 }
 
 // Close modal when clicking outside
