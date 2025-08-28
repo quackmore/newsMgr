@@ -77,6 +77,10 @@ function initializeQuill() {
                 handlers: {
                     'image': customImageHandler
                 }
+            },
+            imageResize: {
+                // Optional: configure the modules you want to use
+                modules: ['Resize', 'DisplaySize', 'Toolbar']
             }
         }
     });
@@ -363,7 +367,7 @@ async function performAutoSave(changeType) {
                 // Update other fields that might have changed
                 Object.assign(currentArticle, result.article);
             }
-            
+
             // Update local articles array if full save
             if (changeType === 'all' || changeType === 'metadata') {
                 const index = articles.findIndex(a => a.id === currentArticle.id);

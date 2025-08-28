@@ -237,12 +237,12 @@ h1 {
 
 /* Additional styles for Quill editor */
 .editor-container {
-    height: 400px;
+    height: 600px;
     margin-bottom: 15px;
 }
 
 #editor {
-    height: 350px;
+    height: 550px;
 }
 
 .modal-content {
