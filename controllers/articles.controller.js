@@ -105,6 +105,7 @@ async function renameArticleDirectory(oldId, newId) {
         return true;
     } catch (error) {
         if (error.code === 'ENOENT') {
+            await fs.mkdir(newDir, { recursive: true });
             return false; // Old directory doesn't exist
         }
         throw error;
@@ -125,13 +126,13 @@ async function updateArticleId(articles, articleIndex, newTitle) {
     const article = articles[articleIndex];
     const oldId = article.id;
 
-    // Generate new ID based on current title and date
     const articleDate = new Date(article.date);
     const newId = generateArticleId(newTitle, articles.filter((_, i) => i !== articleIndex), articleDate);
 
     if (oldId === newId) {
-        return oldId; // No change needed
+        return oldId;
     }
+
 
     // Rename directory
     const renamed = await renameArticleDirectory(oldId, newId);
@@ -146,7 +147,10 @@ async function updateArticleId(articles, articleIndex, newTitle) {
         }
 
         console.log(`Article directory renamed from ${oldId} to ${newId}`);
+    } else {
+        console.log(`Created directory ${newId}`);
     }
+
 
     return newId;
 }
@@ -284,6 +288,7 @@ const articlesController = {
             let finalId = articles[index].id;
             if (oldTitle !== newTitle) {
                 finalId = await updateArticleId(articles, index, newTitle);
+                articles[index].id = finalId;
             }
 
             await saveArticles(articles);
@@ -366,6 +371,7 @@ const articlesController = {
             let finalId = articles[index].id;
             if (oldTitle !== newTitle) {
                 finalId = await updateArticleId(articles, index, newTitle);
+                articles[index].id = finalId;
             }
 
             await saveArticles(articles);

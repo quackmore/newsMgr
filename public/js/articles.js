@@ -123,18 +123,18 @@ function customImageHandler() {
         try {
             const result = await uploadImageToArticle(currentArticle.id, file);
             const range = quillEditor.getSelection() || { index: quillEditor.getLength() };
-            
+
             // Insert image into editor
             quillEditor.insertEmbed(range.index, 'image', result.imagePath);
-            
+
             // Track this image
             editorInsertedImages.add(result.imagePath);
-            
+
             // Update article data
             currentArticle.images = result.images;
             updateImagesList();
             updateFeaturedImageOptions();
-            
+
             // Update last known content
             lastKnownContent = quillEditor.root.innerHTML;
             currentArticle.content = lastKnownContent;
@@ -169,10 +169,10 @@ async function uploadImageToArticle(articleId, file) {
 async function handleContentImageChanges(oldContent, newContent) {
     const oldImages = getImagesFromContent(oldContent);
     const newImages = getImagesFromContent(newContent);
-    
+
     // Find images that were removed from content
     const removedImages = oldImages.filter(imgSrc => !newImages.includes(imgSrc));
-    
+
     // Remove orphaned images from server
     for (const removedImgSrc of removedImages) {
         await removeOrphanedImage(removedImgSrc);
@@ -182,11 +182,11 @@ async function handleContentImageChanges(oldContent, newContent) {
 // Extract image sources from HTML content
 function getImagesFromContent(htmlContent) {
     if (!htmlContent) return [];
-    
+
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = htmlContent;
     const images = tempDiv.querySelectorAll('img');
-    
+
     return Array.from(images).map(img => {
         // Normalize image sources - handle both relative and absolute URLs
         let src = img.src;
@@ -200,25 +200,25 @@ function getImagesFromContent(htmlContent) {
 // Remove orphaned image from server
 async function removeOrphanedImage(imageSrc) {
     const filename = extractFilenameFromPath(imageSrc);
-    
+
     if (!filename || !currentArticle.images) return;
-    
+
     // Check if this image exists in our article's images
     const imageExists = currentArticle.images.some(img => img.filename === filename);
     if (!imageExists) return;
-    
+
     try {
         const response = await fetch(`/api/articles/${currentArticle.id}/images/${encodeURIComponent(filename)}`, {
             method: 'DELETE'
         });
 
         const result = await response.json();
-        
+
         if (result.success) {
             currentArticle.images = result.images;
             updateImagesList();
             updateFeaturedImageOptions();
-            
+
             // Clear featured image if it was the deleted one
             if (currentArticle.featured_image && currentArticle.featured_image.includes(filename)) {
                 currentArticle.featured_image = '';
@@ -226,10 +226,10 @@ async function removeOrphanedImage(imageSrc) {
                 if (featuredSelect) featuredSelect.value = '';
                 scheduleAutoSave('metadata');
             }
-            
+
             // Remove from tracked images
             editorInsertedImages.delete(imageSrc);
-            
+
             showInfo(`Immagine ${filename} rimossa automaticamente`);
         }
     } catch (error) {
@@ -240,7 +240,7 @@ async function removeOrphanedImage(imageSrc) {
 // Extract filename from image path
 function extractFilenameFromPath(imagePath) {
     if (!imagePath) return null;
-    
+
     // Handle paths like /articles/articleId/filename.jpg
     const match = imagePath.match(/\/articles\/[^\/]+\/(.+)$/);
     return match ? match[1] : null;
@@ -258,13 +258,13 @@ async function cleanupAllUnusedImages() {
     // Find images that exist in filesystem but not in content
     for (const image of currentArticle.images) {
         const imagePath = image.path;
-        const isUsedInContent = contentImages.some(contentImg => 
-            contentImg === imagePath || 
+        const isUsedInContent = contentImages.some(contentImg =>
+            contentImg === imagePath ||
             contentImg.endsWith(image.filename)
         );
-        
+
         const isFeaturedImage = currentArticle.featured_image === imagePath;
-        
+
         if (!isUsedInContent && !isFeaturedImage) {
             unusedImages.push(image);
         }
@@ -349,6 +349,21 @@ async function performAutoSave(changeType) {
         if (result.success) {
             hideSavingIndicator();
 
+            if ((changeType === 'metadata' || changeType === 'all') && result.article) {
+                // Update current article with new data (including potentially new ID)
+                const oldId = currentArticle.id;
+                const newId = result.article.id;
+
+                if (oldId !== newId) {
+                    currentArticle.id = newId;
+                    // Update any UI elements that might reference the old ID
+                    console.log(`Article ID changed from ${oldId} to ${newId}`);
+                }
+
+                // Update other fields that might have changed
+                Object.assign(currentArticle, result.article);
+            }
+            
             // Update local articles array if full save
             if (changeType === 'all' || changeType === 'metadata') {
                 const index = articles.findIndex(a => a.id === currentArticle.id);
