@@ -4,6 +4,9 @@ let currentArticle = null;
 let autoSaveTimeout = null;
 let isOnline = true;
 let pendingChanges = [];
+let editorInsertedImages = new Set();
+let lastKnownContent = '';
+
 
 // Configuration
 const AUTO_SAVE_DELAY = 2000; // 2 seconds debounce
@@ -78,23 +81,31 @@ function initializeQuill() {
         }
     });
 
-    // Auto-save on content changes
-    quillEditor.on('text-change', () => {
-        if (currentArticle) {
-            currentArticle.content = quillEditor.root.innerHTML;
-            scheduleAutoSave('content');
+    // Enhanced content change monitoring
+    quillEditor.on('text-change', async (delta, oldDelta, source) => {
+        if (!currentArticle) return;
+
+        const newContent = quillEditor.root.innerHTML;
+
+        // Check for image deletions if this was a user action
+        if (source === 'user' && lastKnownContent) {
+            await handleContentImageChanges(lastKnownContent, newContent);
         }
+
+        // Update content and schedule save
+        currentArticle.content = newContent;
+        lastKnownContent = newContent;
+        scheduleAutoSave('content');
     });
 
     // Load initial content if editing
     if (currentArticle && currentArticle.content) {
         quillEditor.clipboard.dangerouslyPasteHTML(0, currentArticle.content);
+        lastKnownContent = currentArticle.content;
     }
 }
 
-// Custom image handler with immediate article creation
 function customImageHandler() {
-    // Ensure article exists before uploading images
     if (!currentArticle) {
         showError('Errore: nessun articolo attivo');
         return;
@@ -110,17 +121,23 @@ function customImageHandler() {
         if (!file) return;
 
         try {
-            // Upload image to specific article
             const result = await uploadImageToArticle(currentArticle.id, file);
-
+            const range = quillEditor.getSelection() || { index: quillEditor.getLength() };
+            
             // Insert image into editor
-            const range = quillEditor.getSelection();
             quillEditor.insertEmbed(range.index, 'image', result.imagePath);
-
-            // Update article images immediately
+            
+            // Track this image
+            editorInsertedImages.add(result.imagePath);
+            
+            // Update article data
             currentArticle.images = result.images;
             updateImagesList();
             updateFeaturedImageOptions();
+            
+            // Update last known content
+            lastKnownContent = quillEditor.root.innerHTML;
+            currentArticle.content = lastKnownContent;
 
             showSuccess('Immagine caricata');
         } catch (error) {
@@ -146,6 +163,125 @@ async function uploadImageToArticle(articleId, file) {
     }
 
     return result;
+}
+
+// Handle image changes in content
+async function handleContentImageChanges(oldContent, newContent) {
+    const oldImages = getImagesFromContent(oldContent);
+    const newImages = getImagesFromContent(newContent);
+    
+    // Find images that were removed from content
+    const removedImages = oldImages.filter(imgSrc => !newImages.includes(imgSrc));
+    
+    // Remove orphaned images from server
+    for (const removedImgSrc of removedImages) {
+        await removeOrphanedImage(removedImgSrc);
+    }
+}
+
+// Extract image sources from HTML content
+function getImagesFromContent(htmlContent) {
+    if (!htmlContent) return [];
+    
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = htmlContent;
+    const images = tempDiv.querySelectorAll('img');
+    
+    return Array.from(images).map(img => {
+        // Normalize image sources - handle both relative and absolute URLs
+        let src = img.src;
+        if (src.startsWith(window.location.origin)) {
+            src = src.replace(window.location.origin, '');
+        }
+        return src;
+    });
+}
+
+// Remove orphaned image from server
+async function removeOrphanedImage(imageSrc) {
+    const filename = extractFilenameFromPath(imageSrc);
+    
+    if (!filename || !currentArticle.images) return;
+    
+    // Check if this image exists in our article's images
+    const imageExists = currentArticle.images.some(img => img.filename === filename);
+    if (!imageExists) return;
+    
+    try {
+        const response = await fetch(`/api/articles/${currentArticle.id}/images/${encodeURIComponent(filename)}`, {
+            method: 'DELETE'
+        });
+
+        const result = await response.json();
+        
+        if (result.success) {
+            currentArticle.images = result.images;
+            updateImagesList();
+            updateFeaturedImageOptions();
+            
+            // Clear featured image if it was the deleted one
+            if (currentArticle.featured_image && currentArticle.featured_image.includes(filename)) {
+                currentArticle.featured_image = '';
+                const featuredSelect = document.getElementById('featuredImage');
+                if (featuredSelect) featuredSelect.value = '';
+                scheduleAutoSave('metadata');
+            }
+            
+            // Remove from tracked images
+            editorInsertedImages.delete(imageSrc);
+            
+            showInfo(`Immagine ${filename} rimossa automaticamente`);
+        }
+    } catch (error) {
+        console.error('Failed to remove orphaned image:', error);
+    }
+}
+
+// Extract filename from image path
+function extractFilenameFromPath(imagePath) {
+    if (!imagePath) return null;
+    
+    // Handle paths like /articles/articleId/filename.jpg
+    const match = imagePath.match(/\/articles\/[^\/]+\/(.+)$/);
+    return match ? match[1] : null;
+}
+
+// Comprehensive cleanup function for manual triggering
+async function cleanupAllUnusedImages() {
+    if (!currentArticle || !currentArticle.images || currentArticle.images.length === 0) {
+        return;
+    }
+
+    const contentImages = getImagesFromContent(currentArticle.content);
+    const unusedImages = [];
+
+    // Find images that exist in filesystem but not in content
+    for (const image of currentArticle.images) {
+        const imagePath = image.path;
+        const isUsedInContent = contentImages.some(contentImg => 
+            contentImg === imagePath || 
+            contentImg.endsWith(image.filename)
+        );
+        
+        const isFeaturedImage = currentArticle.featured_image === imagePath;
+        
+        if (!isUsedInContent && !isFeaturedImage) {
+            unusedImages.push(image);
+        }
+    }
+
+    // Remove unused images
+    for (const unusedImage of unusedImages) {
+        try {
+            await removeOrphanedImage(unusedImage.path);
+        } catch (error) {
+            console.error('Failed to cleanup unused image:', error);
+        }
+    }
+
+    if (unusedImages.length > 0) {
+        showSuccess(`Rimosse ${unusedImages.length} immagini non utilizzate`);
+    }
 }
 
 // Auto-save scheduler with debouncing
@@ -212,7 +348,7 @@ async function performAutoSave(changeType) {
 
         if (result.success) {
             hideSavingIndicator();
-            
+
             // Update local articles array if full save
             if (changeType === 'all' || changeType === 'metadata') {
                 const index = articles.findIndex(a => a.id === currentArticle.id);
@@ -234,7 +370,7 @@ async function performAutoSave(changeType) {
     } catch (error) {
         console.error('Auto-save failed:', error);
         showError('Errore nel salvataggio automatico');
-        
+
         // Retry later if online
         if (isOnline) {
             setTimeout(() => scheduleAutoSave(changeType), RETRY_DELAY);
@@ -299,14 +435,14 @@ async function openNewArticleModal() {
 
         // Set current article
         currentArticle = result.article;
-        
+
         // Update UI
         document.getElementById('modalTitle').textContent = 'Nuovo Articolo';
         populateForm(currentArticle);
-        
+
         // Initialize editor
         initializeQuill();
-        
+
         // Show modal
         document.getElementById('articleModal').style.display = 'block';
         clearErrors();
@@ -334,12 +470,12 @@ async function editArticle(id) {
         }
 
         currentArticle = result.article;
-        
+
         document.getElementById('modalTitle').textContent = 'Modifica Articolo';
         populateForm(currentArticle);
-        
+
         initializeQuill();
-        
+
         document.getElementById('articleModal').style.display = 'block';
         clearErrors();
 
@@ -369,7 +505,7 @@ function populateForm(article) {
 function setupFormAutoSave() {
     const fields = [
         'articleTitle',
-        'articleExcerpt', 
+        'articleExcerpt',
         'articleCategory',
         'articleStatus',
         'articleAuthor',
@@ -437,8 +573,11 @@ function updateImagesList() {
         imageDiv.className = 'uploaded-image';
         imageDiv.innerHTML = `
             <img src="${image.path}" alt="${image.filename}" title="${image.filename}">
-            <button class="remove-image" onclick="removeImage(${index})">&times;</button>
         `;
+        // imageDiv.innerHTML = `
+        //     <img src="${image.path}" alt="${image.filename}" title="${image.filename}">
+        //     <button class="remove-image" onclick="removeImage(${index})">&times;</button>
+        // `;
         container.appendChild(imageDiv);
     });
 }
@@ -449,7 +588,7 @@ function updateFeaturedImageOptions() {
 
     const select = document.getElementById('featuredImage');
     const currentValue = select.value;
-    
+
     select.innerHTML = '<option value="">Nessuna immagine in evidenza</option>';
 
     if (currentArticle.images && currentArticle.images.length > 0) {
@@ -486,7 +625,7 @@ async function removeImage(index) {
             currentArticle.images = result.images;
             updateImagesList();
             updateFeaturedImageOptions();
-            
+
             // Clear featured image if it was the deleted one
             if (currentArticle.featured_image === image.path) {
                 currentArticle.featured_image = '';
@@ -525,7 +664,7 @@ async function toggleStatus(id) {
         if (result.success) {
             article.status = newStatus;
             renderArticles();
-            
+
             // Update current article if it's the same one
             if (currentArticle && currentArticle.id === id) {
                 currentArticle.status = newStatus;
@@ -559,7 +698,7 @@ async function deleteArticle(id) {
             // Remove from local array
             articles = articles.filter(a => a.id !== id);
             renderArticles();
-            
+
             // Close modal if deleting current article
             if (currentArticle && currentArticle.id === id) {
                 closeModal();
@@ -578,20 +717,23 @@ async function deleteArticle(id) {
 // Close modal and cleanup
 function closeModal() {
     document.getElementById('articleModal').style.display = 'none';
-    
+
     // Clear auto-save timeout
     if (autoSaveTimeout) {
         clearTimeout(autoSaveTimeout);
         autoSaveTimeout = null;
     }
-    
+
+    // Perform final cleanup before closing
+    if (currentArticle) {
+        cleanupAllUnusedImages().catch(console.error);
+    }
+
     // Reset state
     currentArticle = null;
-    
-    if (quillEditor) {
-        quillEditor.setText('');
-    }
-    
+    lastKnownContent = '';
+    editorInsertedImages.clear();
+
     hideSavingIndicator();
     clearErrors();
 }
@@ -757,7 +899,7 @@ function getSetting(key, defaultValue) {
 // Close modal when clicking outside
 window.onclick = function (event) {
     const modal = document.getElementById('articleModal');
-    if (event.target === modal) {
+    if (event.target === modal && !event.target.closest('.uploaded-image')) {
         closeModal();
     }
 
