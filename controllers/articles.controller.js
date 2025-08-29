@@ -105,7 +105,6 @@ async function renameArticleDirectory(oldId, newId) {
         return true;
     } catch (error) {
         if (error.code === 'ENOENT') {
-            await fs.mkdir(newDir, { recursive: true });
             return false; // Old directory doesn't exist
         }
         throw error;
@@ -133,24 +132,23 @@ async function updateArticleId(articles, articleIndex, newTitle) {
         return oldId;
     }
 
+    // Always update the article ID first
+    article.id = newId;
 
-    // Rename directory
-    const renamed = await renameArticleDirectory(oldId, newId);
-
-    if (renamed) {
-        // Update article ID
-        article.id = newId;
-
-        // Update featured_image path if it exists
-        if (article.featured_image && article.featured_image.startsWith(`/articles/${oldId}/`)) {
-            article.featured_image = article.featured_image.replace(`/articles/${oldId}/`, `/articles/${newId}/`);
-        }
-
-        console.log(`Article directory renamed from ${oldId} to ${newId}`);
-    } else {
-        console.log(`Created directory ${newId}`);
+    // Update featured_image path if it exists
+    if (article.featured_image && article.featured_image.startsWith(`/articles/${oldId}/`)) {
+        article.featured_image = article.featured_image.replace(`/articles/${oldId}/`, `/articles/${newId}/`);
     }
 
+    // Handle directory operations
+    const renamed = await renameArticleDirectory(oldId, newId);
+    
+    if (renamed) {
+        console.log(`Article directory renamed from ${oldId} to ${newId}`);
+    } else {
+        // No directory existed to rename - this is normal for new articles
+        console.log(`No directory to rename for article ${oldId} -> ${newId}`);
+    }
 
     return newId;
 }

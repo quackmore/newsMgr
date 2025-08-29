@@ -51,62 +51,67 @@ async function processPendingChanges() {
 
 // Initialize Quill editor with auto-save
 function initializeQuill() {
-    if (quillEditor) {
-        return; // Already initialized
-    }
+    if (!quillEditor) {
+        const toolbarOptions = [
+            [{ 'header': [1, 2, 3, 4, 5, 6, false] }],
+            [{ 'font': [] }],
+            ['bold', 'italic', 'underline', 'strike'],
+            [{ 'color': [] }, { 'background': [] }],
+            [{ 'script': 'sub' }, { 'script': 'super' }],
+            [{ 'indent': '-1' }, { 'indent': '+1' }],
+            [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+            ['blockquote', 'code-block'],
+            [{ 'direction': 'rtl' }],
+            [{ 'align': [] }],
+            ['link', 'image', 'video']
+        ];
 
-    const toolbarOptions = [
-        [{ 'header': [1, 2, 3, 4, 5, 6, false] }],
-        [{ 'font': [] }],
-        ['bold', 'italic', 'underline', 'strike'],
-        [{ 'color': [] }, { 'background': [] }],
-        [{ 'script': 'sub' }, { 'script': 'super' }],
-        [{ 'indent': '-1' }, { 'indent': '+1' }],
-        [{ 'list': 'ordered' }, { 'list': 'bullet' }],
-        ['blockquote', 'code-block'],
-        [{ 'direction': 'rtl' }],
-        [{ 'align': [] }],
-        ['link', 'image', 'video']
-    ];
-
-    quillEditor = new Quill('#editor', {
-        theme: 'snow',
-        modules: {
-            toolbar: {
-                container: toolbarOptions,
-                handlers: {
-                    'image': customImageHandler
+        quillEditor = new Quill('#editor', {
+            theme: 'snow',
+            modules: {
+                toolbar: {
+                    container: toolbarOptions,
+                    handlers: {
+                        'image': customImageHandler
+                    }
+                },
+                imageResize: {
+                    modules: ['Resize', 'DisplaySize', 'Toolbar']
                 }
-            },
-            imageResize: {
-                // Optional: configure the modules you want to use
-                modules: ['Resize', 'DisplaySize', 'Toolbar']
             }
-        }
-    });
+        });
 
-    // Enhanced content change monitoring
-    quillEditor.on('text-change', async (delta, oldDelta, source) => {
-        if (!currentArticle) return;
+        // Enhanced content change monitoring
+        quillEditor.on('text-change', async (delta, oldDelta, source) => {
+            if (!currentArticle) return;
 
-        const newContent = quillEditor.root.innerHTML;
+            const newContent = quillEditor.root.innerHTML;
 
-        // Check for image deletions if this was a user action
-        if (source === 'user' && lastKnownContent) {
-            await handleContentImageChanges(lastKnownContent, newContent);
-        }
+            // Check for image deletions if this was a user action
+            if (source === 'user' && lastKnownContent) {
+                await handleContentImageChanges(lastKnownContent, newContent);
+            }
 
-        // Update content and schedule save
-        currentArticle.content = newContent;
-        lastKnownContent = newContent;
-        scheduleAutoSave('content');
-    });
-
-    // Load initial content if editing
-    if (currentArticle && currentArticle.content) {
-        quillEditor.clipboard.dangerouslyPasteHTML(0, currentArticle.content);
-        lastKnownContent = currentArticle.content;
+            // Update content and schedule save
+            currentArticle.content = newContent;
+            lastKnownContent = newContent;
+            scheduleAutoSave('content');
+        });
     }
+
+    // ALWAYS reset editor content when initializing for a new/different article
+    const contentToLoad = currentArticle?.content || '';
+    
+    // Clear the editor first
+    quillEditor.setText('');
+    
+    // Load content if available
+    if (contentToLoad) {
+        quillEditor.clipboard.dangerouslyPasteHTML(0, contentToLoad);
+    }
+    
+    // Update last known content
+    lastKnownContent = contentToLoad;
 }
 
 function customImageHandler() {
@@ -452,8 +457,11 @@ async function openNewArticleModal() {
             throw new Error(result.error || 'Failed to create article');
         }
 
-        // Set current article
-        currentArticle = result.article;
+        // Set current article with confirmed empty content
+        currentArticle = {
+            ...result.article,
+            content: '' // Ensure content starts empty
+        };
 
         // Update UI
         document.getElementById('modalTitle').textContent = 'Nuovo Articolo';
@@ -470,7 +478,7 @@ async function openNewArticleModal() {
         document.getElementById('articleTitle').focus();
         document.getElementById('articleTitle').select();
 
-        showInfo('Nuovo articolo creato - le modifiche vengono salvate automaticamente');
+        // showInfo('Nuovo articolo creato - le modifiche vengono salvate automaticamente');
 
     } catch (error) {
         console.error('Error creating article:', error);
