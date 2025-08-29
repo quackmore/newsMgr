@@ -58,14 +58,13 @@ app.listen(PORT, () => {
       break;
   }
 
-  // FIXME: commented for debug
-  // exec(startCommand, (error) => {
-  //   if (error) {
-  //     console.error(`Error opening browser: ${error.message}`);
-  //     return;
-  //   }
-  //   console.log(`Opened http://localhost:${PORT} in your browser.`);
-  // });
+  exec(startCommand, (error) => {
+    if (error) {
+      console.error(`Error opening browser: ${error.message}`);
+      return;
+    }
+    console.log(`Opened http://localhost:${PORT} in your browser.`);
+  });
 });
 
 export { app };
