@@ -104,6 +104,28 @@
             </form>
         </div>
     </div>
+    <!-- Custom Link Modal HTML -->
+    <div class="modal-backdrop" id="link-video-modal-backdrop"></div>
+
+    <div id="custom-link-modal" class="custom-modal">
+        <h3>Inserisci Link</h3>
+        <input type="text" id="link-url-input" placeholder="URL del link">
+        <div class="button-group">
+            <button id="insert-link-button" class="save-button">Inserisci</button>
+            <button id="cancel-link-button" class="cancel-button">Annulla</button>
+        </div>
+    </div>
+
+    <!-- Custom Video Modal HTML -->
+    <div class="custom-modal" id="custom-video-modal">
+        <h3>Inserisci Video da YouTube</h3>
+        <label for="video-url-input">Video URL:</label>
+        <input type="text" id="video-url-input" placeholder="e.g., https://www.youtube.com/embed/videoid">
+        <div class="button-group">
+            <button class="save-button" id="insert-video-button">Inserisci</button>
+            <button class="cancel-button" id="cancel-video-button">Annulla</button>
+        </div>
+    </div>
 
     <!-- Modal per impostazioni -->
     <div id="settingsModal" class="modal">

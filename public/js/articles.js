@@ -6,6 +6,8 @@ let isOnline = true;
 let pendingChanges = [];
 let editorInsertedImages = new Set();
 let lastKnownContent = '';
+let savedRange = null; // To store the selection range when modal opens
+
 
 
 // Configuration
@@ -72,7 +74,9 @@ function initializeQuill() {
                 toolbar: {
                     container: toolbarOptions,
                     handlers: {
-                        'image': customImageHandler
+                        'image': customImageHandler,
+                        'link': customLinkHandler,
+                        'video': customVideoHandler
                     }
                 },
                 imageResize: {
@@ -101,15 +105,15 @@ function initializeQuill() {
 
     // ALWAYS reset editor content when initializing for a new/different article
     const contentToLoad = currentArticle?.content || '';
-    
+
     // Clear the editor first
     quillEditor.setText('');
-    
+
     // Load content if available
     if (contentToLoad) {
         quillEditor.clipboard.dangerouslyPasteHTML(0, contentToLoad);
     }
-    
+
     // Update last known content
     lastKnownContent = contentToLoad;
 }
@@ -155,6 +159,117 @@ function customImageHandler() {
         }
     };
 }
+
+// Function to show a specific modal
+function showModal(modalElementId) {
+    document.getElementById(modalElementId).style.display = 'block';
+    document.getElementById('link-video-modal-backdrop').style.display = 'block';
+}
+
+// Function to hide all modals
+function hideAllModals() {
+    document.getElementById('custom-link-modal').style.display = 'none';
+    document.getElementById('custom-video-modal').style.display = 'none';
+    document.getElementById('link-video-modal-backdrop').style.display = 'none';
+    document.getElementById('link-url-input').value = ''; // Clear link input
+    document.getElementById('video-url-input').value = ''; // Clear video input
+    savedRange = null; // Clear saved range
+}
+
+function customLinkHandler(value) {
+    if (value) {
+        savedRange = quillEditor.getSelection(true);
+
+        // Pre-fill input if a link is already selected
+        if (savedRange && savedRange.length > 0) {
+            const [leaf] = quillEditor.getLeaf(savedRange.index);
+            if (leaf.formats && leaf.formats.link) {
+                document.getElementById('link-url-input').value = leaf.formats.link;
+            }
+        }
+        showModal('custom-link-modal');
+        document.getElementById('link-url-input').focus();
+    } else {
+        quillEditor.format('link', false);
+    }
+}
+
+function customVideoHandler(value) {
+    if (value) {
+        savedRange = quillEditor.getSelection(true); // Save current selection for video
+        // Optionally pre-fill if existing video is selected
+        if (savedRange && savedRange.length > 0) {
+            const [leaf] = quillEditor.getLeaf(savedRange.index);
+            if (leaf && leaf.domNode.tagName === 'IFRAME' && leaf.domNode.src) {
+                videoUrlInput.value = leaf.domNode.src;
+            }
+        }
+        showModal('custom-video-modal');
+        document.getElementById('video-url-input').focus();
+    } else {
+        // Default Quill behavior for removing video or custom logic if needed
+    }
+}
+
+// Handle inserting the link
+document.getElementById('insert-link-button').addEventListener('click', () => {
+    const url = document.getElementById('link-url-input').value.trim();
+    if (url) {
+        if (savedRange) {
+            if (savedRange.length === 0) { // No text selected, insert URL as text
+                quillEditor.insertText(savedRange.index, url, { link: url });
+            } else { // Text selected, apply link to selection
+                quillEditor.formatText(savedRange.index, savedRange.length, 'link', url);
+            }
+            quillEditor.setSelection(savedRange.index + (savedRange.length === 0 ? url.length : 0), 0);
+        }
+    }
+    hideAllModals();
+});
+
+// Handle canceling the link insertion
+document.getElementById('cancel-link-button').addEventListener('click', () => {
+    hideAllModals();
+});
+
+// Helper function to get YouTube embed URL from various YouTube links
+function getYouTubeEmbedUrl(url) {
+    let videoId = null;
+    const youtubeRegex = /(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
+    const match = url.match(youtubeRegex);
+    if (match && match[1]) {
+        videoId = match[1];
+    }
+    return videoId ? `https://www.youtube.com/embed/${videoId}` : null;
+}
+
+// Handle inserting the video
+document.getElementById('insert-video-button').addEventListener('click', () => {
+    const rawUrl = document.getElementById('video-url-input').value.trim();
+    if (rawUrl) {
+        const embedUrl = getYouTubeEmbedUrl(rawUrl);
+        console.log("Attempting to embed URL:", embedUrl); // Debugging log
+        if (embedUrl) {
+            if (savedRange) {
+                quillEditor.insertEmbed(savedRange.index, 'video', embedUrl);
+                quillEditor.setSelection(savedRange.index + 1, 0); // Move cursor after inserted video
+            }
+        } else {
+            // Optionally provide user feedback for invalid YouTube URL
+            console.warn("Invalid YouTube URL provided:", rawUrl);
+            // You could add a temporary message to the modal or a simple alert here
+            alert("Please enter a valid YouTube video URL."); // Using alert for simple feedback, but a custom message box is preferred in production.
+        }
+    } hideAllModals();
+});
+
+// Handle canceling the video insertion
+document.getElementById('cancel-video-button').addEventListener('click', () => {
+    hideAllModals();
+});
+
+// Close modals when clicking outside (on backdrop)
+document.getElementById('link-video-modal-backdrop').addEventListener('click', hideAllModals);
 
 // Upload image to specific article
 async function uploadImageToArticle(articleId, file) {
@@ -763,6 +878,8 @@ function closeModal() {
 
     hideSavingIndicator();
     clearErrors();
+    // refresh articles list
+    loadArticles();
 }
 
 // Render articles list
