@@ -108,12 +108,17 @@ h1 {
     color: white;
 }
 
-.status-published {
-    background: #27ae60;
+.status-ready {
+    background: #27ae49;
     color: white;
 }
 
-.status-deleted {
+.status-published {
+    background: #143ab4;
+    color: white;
+}
+
+.status-archived {
     background: #e74c3c;
     color: white;
 }

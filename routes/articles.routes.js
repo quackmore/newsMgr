@@ -65,8 +65,8 @@ router.put('/:id/content', articlesController.updateArticleContent);
 // PUT /api/articles/:id/metadata - Update only metadata
 router.put('/:id/metadata', articlesController.updateArticleMetadata);
 
-// PUT /api/articles/:id/publish - Toggle publish status
-router.put('/:id/publish', articlesController.togglePublishStatus);
+// PUT /api/articles/:id/status - update status
+router.put('/:id/status', articlesController.updateStatus);
 
 // DELETE /api/articles/:id - Delete article
 router.delete('/:id', articlesController.deleteArticle);

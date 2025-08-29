@@ -142,7 +142,7 @@ async function updateArticleId(articles, articleIndex, newTitle) {
 
     // Handle directory operations
     const renamed = await renameArticleDirectory(oldId, newId);
-    
+
     if (renamed) {
         console.log(`Article directory renamed from ${oldId} to ${newId}`);
     } else {
@@ -387,7 +387,7 @@ const articlesController = {
         }
     },
 
-    async togglePublishStatus(req, res) {
+    async updateStatus(req, res) {
         try {
             const articles = await loadArticles();
             const index = articles.findIndex(a => a.id === req.params.id);
@@ -399,11 +399,13 @@ const articlesController = {
                 });
             }
 
+            const oldStatus = articles[index].status;
             articles[index].status = req.body.status || 'draft';
-            articles[index].updated = new Date().toISOString();
-
-            if (req.body.status === 'published' && !articles[index].published_date) {
-                articles[index].published_date = new Date().toISOString();
+            articles[index].statusUpdated = {
+                timestamp: new Date().toISOString(),
+                gitUsername: req.body.gitUsername,
+                fromStatus: oldStatus,
+                toStatus: articles[index].status
             }
 
             await saveArticles(articles);

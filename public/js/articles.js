@@ -8,7 +8,20 @@ let editorInsertedImages = new Set();
 let lastKnownContent = '';
 let savedRange = null; // To store the selection range when modal opens
 
+// Status workflow constants
+const STATUSES = {
+    DRAFT: 'draft',
+    READY: 'ready',
+    PUBLISHED: 'published',
+    ARCHIVED: 'archived'
+};
 
+const STATUS_LABELS = {
+    [STATUSES.DRAFT]: 'Bozza',
+    [STATUSES.READY]: 'Pronto',
+    [STATUSES.PUBLISHED]: 'Pubblicato',
+    [STATUSES.ARCHIVED]: 'Archiviato'
+};
 
 // Configuration
 const AUTO_SAVE_DELAY = 2000; // 2 seconds debounce
@@ -823,6 +836,65 @@ async function toggleStatus(id) {
     }
 }
 
+// New function to handle status changes with proper workflow
+async function changeStatus(id, newStatus) {
+    try {
+        const article = articles.find(a => a.id === id);
+        if (!article) return;
+
+        const currentUser = getSetting('gitUsername');
+        const isAuthorized = isPublisher(currentUser);
+
+        // Validate the status change is allowed
+        const availableActions = getAvailableActions(article);
+        const isValidAction = availableActions.some(action => action.type === newStatus);
+
+        if (!isValidAction) {
+            showError('Azione non permessa per lo status corrente');
+            return;
+        }
+
+        // Check authorization for restricted actions
+        const restrictedActions = ['published', 'archived'];
+        if (restrictedActions.includes(newStatus) && !isAuthorized) {
+            showError('Non hai i permessi per questa azione');
+            return;
+        }
+
+        const response = await fetch(`/api/articles/${id}/status`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                status: newStatus,
+                gitUsername: currentUser
+            })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+
+            renderArticles();
+            // Refresh list to get updated status change info
+            loadArticles();
+
+            showSuccess(`Articolo cambiato a: ${STATUS_LABELS[newStatus]}`);
+        } else {
+            throw new Error(result.error || 'Failed to update status');
+        }
+    } catch (error) {
+        console.error('Error updating status:', error);
+        showError('Errore nell\'aggiornamento dello status');
+    }
+}
+
+// Helper function for status labels
+function getStatusLabel(status) {
+    return STATUS_LABELS[status] || status;
+}
+
 // Delete article
 async function deleteArticle(id) {
     if (!confirm('Sei sicuro di voler eliminare questo articolo?')) {
@@ -882,6 +954,46 @@ function closeModal() {
     loadArticles();
 }
 
+// Get available actions for current user and article status
+function getAvailableActions(article) {
+    const currentUser = getSetting('gitUsername');
+    const isAuthorized = isPublisher(currentUser);
+    const actions = [];
+
+    switch (article.status) {
+        case STATUSES.DRAFT:
+            actions.push({ type: 'ready', label: 'Segna come pronto', class: 'btn-success' });
+            break;
+
+        case STATUSES.READY:
+            actions.push({ type: 'draft', label: 'Torna a bozza', class: 'btn-secondary' });
+            if (isAuthorized) {
+                actions.push({ type: 'published', label: 'Pubblica', class: 'btn-success' });
+            }
+            break;
+
+        case STATUSES.PUBLISHED:
+            if (isAuthorized) {
+                actions.push({ type: 'ready', label: 'Torna a pronto', class: 'btn-secondary' });
+                actions.push({ type: 'archived', label: 'Archivia', class: 'btn-warning' });
+            }
+            break;
+
+        case STATUSES.ARCHIVED:
+            if (isAuthorized) {
+                actions.push({ type: 'published', label: 'Ripubblica', class: 'btn-success' });
+            }
+            break;
+    }
+
+    return actions;
+}
+
+// Check if article can be edited
+function canEditArticle(article) {
+    return article.status === STATUSES.DRAFT || article.status === STATUSES.READY;
+}
+
 // Render articles list
 function renderArticles() {
     const container = document.getElementById('articlesContainer');
@@ -891,23 +1003,47 @@ function renderArticles() {
         return;
     }
 
-    const articlesHtml = articles.map(article => `
-        <div class="article-card">
-            <div class="article-status status-${article.status}">${getStatusLabel(article.status)}</div>
-            <div class="article-title">${escapeHtml(article.title)}</div>
-            <div class="article-excerpt">${escapeHtml(article.excerpt)}</div>
-            <div class="article-meta">
-                ${article.category} • ${formatDate(article.date)} • ${article.author}
-                ${article.images && article.images.length > 0 ? ` • ${article.images.length} immagini` : ''}
+    const articlesHtml = articles.map(article => {
+        const availableActions = getAvailableActions(article);
+        const canEdit = canEditArticle(article);
+
+        // Build action buttons
+        const actionButtons = [];
+
+        // Edit button (only for draft/ready)
+        if (canEdit) {
+            actionButtons.push(`<button class="btn btn-small" onclick="editArticle('${article.id}')">Modifica</button>`);
+        }
+
+        // Status change buttons
+        availableActions.forEach(action => {
+            actionButtons.push(`<button class="btn btn-small ${action.class}" 
+                                      onclick="changeStatus('${article.id}', '${action.type}')">${action.label}</button>`);
+        });
+
+        // Delete button (maybe restrict this too?)
+        actionButtons.push(`<button class="btn btn-small btn-danger" onclick="deleteArticle('${article.id}')">Elimina</button>`);
+
+        // Show last status change info if available
+        const statusChangeInfo = article.lastStatusChange ?
+            `<div class="status-change-info">Modificato il ${formatDate(article.statusUpdated.timestamp)} da ${article.statusUpdated.gitUsername}</div>` : '';
+
+        return `
+            <div class="article-card">
+                <div class="article-status status-${article.status}">${STATUS_LABELS[article.status]}</div>
+                <div class="article-title">${escapeHtml(article.title)}</div>
+                <div class="article-excerpt">${escapeHtml(article.excerpt)}</div>
+                <div class="article-meta">
+                    ${article.category} • ${formatDate(article.date)} • ${article.author}
+                    ${article.images && article.images.length > 0 ? ` • ${article.images.length} immagini` : ''}
+                </div>
+                ${statusChangeInfo}
+                <div class="article-actions">
+                    ${actionButtons.join('')}
+                </div>
             </div>
-            <div class="article-actions">
-                <button class="btn btn-small" onclick="editArticle('${article.id}')">Modifica</button>
-                <button class="btn btn-small ${article.status === 'published' ? '' : 'btn-success'}" 
-                        onclick="toggleStatus('${article.id}')">${article.status === 'published' ? 'Nascondi' : 'Pubblica'}</button>
-                <button class="btn btn-small btn-danger" onclick="deleteArticle('${article.id}')">Elimina</button>
-            </div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
 
     container.innerHTML = `<div class="articles-grid">${articlesHtml}</div>`;
 }

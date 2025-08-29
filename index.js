@@ -34,7 +34,8 @@ app.use('/articles', express.static(ARTICLES_DIR));
 app.use('/api', routes);
 
 // Serve the front end for any other route
-// TODO: REDUNDANT ??
+// apparently this is REDUNDANT...
+//
 // app.get('*path', (req, res) => {
 //   res.sendFile(join(__dirname, '/public', 'index.html'));
 // });
@@ -58,13 +59,15 @@ app.listen(PORT, () => {
       break;
   }
 
-  exec(startCommand, (error) => {
-    if (error) {
-      console.error(`Error opening browser: ${error.message}`);
-      return;
-    }
-    console.log(`Opened http://localhost:${PORT} in your browser.`);
-  });
+  if (process.env.NODE_ENV === 'production') {
+    exec(startCommand, (error) => {
+      if (error) {
+        console.error(`Error opening browser: ${error.message}`);
+        return;
+      }
+      console.log(`Opened http://localhost:${PORT} in your browser.`);
+    });
+  }
 });
 
 export { app };
