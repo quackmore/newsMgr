@@ -1,9 +1,10 @@
 // settings.js - Configuration management for microblog
 
 let currentSettings = {};
+let repoSettings = {};
 
 // Load settings on page load
-document.addEventListener('DOMContentLoaded', loadSettings);
+// document.addEventListener('DOMContentLoaded', loadSettings);
 
 // Settings validation schema
 const validateSettings = (settings) => {
@@ -100,7 +101,7 @@ document.getElementById('settingsForm').addEventListener('submit', async (e) => 
             currentSettings = { ...currentSettings, ...formData };
             closeSettingsModal();
             showSuccess('Impostazioni salvate con successo!');
-            
+
             // Update the author field in article form if it exists
             const authorField = document.getElementById('articleAuthor');
             if (authorField && formData.authorName) {
@@ -128,7 +129,7 @@ function getSetting(key, defaultValue = null) {
 // Update a specific setting
 async function updateSetting(key, value) {
     const newSettings = { ...currentSettings, [key]: value };
-    
+
     try {
         const response = await fetch('/api/config', {
             method: 'PUT',
@@ -173,8 +174,36 @@ function clearSettingsErrors() {
     }
 }
 
+async function getRepoSettings() {
+    try {
+        const response = await fetch('/api/config/repoSettings');
+
+        const result = await response.json();
+
+        if (result.success) {
+            if (result.data) {
+                repoSettings = result.data;
+                console.log('Repo settings:', repoSettings);
+            }
+        } else {
+            console.error('Error reading data repo setting:', result.error);
+        }
+    } catch (error) {
+        console.error('Error reading data repo setting:', error);
+    }
+}
+
+function isPublisher(gitUsername) {
+    if (Object.prototype.toString.call(repoSettings) === '[object Object]' &&
+        repoSettings.hasOwnProperty('publishers') &&
+        Array.isArray(repoSettings.publishers)) {
+        return repoSettings.publishers.includes(gitUsername);
+    }
+    return false;
+}
+
 // Close settings modal when clicking outside
-window.addEventListener('click', function(event) {
+window.addEventListener('click', function (event) {
     const settingsModal = document.getElementById('settingsModal');
     if (event.target === settingsModal) {
         closeSettingsModal();
@@ -186,5 +215,7 @@ window.settingsManager = {
     getCurrentSettings,
     getSetting,
     updateSetting,
-    loadSettings
+    loadSettings,
+    getRepoSettings,
+    isPublisher
 };

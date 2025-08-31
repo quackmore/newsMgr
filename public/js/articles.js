@@ -28,10 +28,10 @@ const AUTO_SAVE_DELAY = 2000; // 2 seconds debounce
 const RETRY_DELAY = 5000; // 5 seconds retry on failure
 
 // Load articles on page load
-document.addEventListener('DOMContentLoaded', () => {
-    loadArticles();
-    setupConnectionMonitoring();
-});
+// document.addEventListener('DOMContentLoaded', () => {
+//     loadArticles();
+//     setupConnectionMonitoring();
+// });
 
 // Connection monitoring
 function setupConnectionMonitoring() {
@@ -879,6 +879,12 @@ async function changeStatus(id, newStatus) {
             renderArticles();
             // Refresh list to get updated status change info
             loadArticles();
+            // Update current article if it's the same one
+            // if (currentArticle && currentArticle.id === id) {
+            //     currentArticle.status = newStatus;
+            //     currentArticle.lastStatusChange = article.lastStatusChange;
+            //     document.getElementById('articleStatus').value = newStatus;
+            // }
 
             showSuccess(`Articolo cambiato a: ${STATUS_LABELS[newStatus]}`);
         } else {
@@ -1006,43 +1012,38 @@ function renderArticles() {
     const articlesHtml = articles.map(article => {
         const availableActions = getAvailableActions(article);
         const canEdit = canEditArticle(article);
-
         // Build action buttons
         const actionButtons = [];
-
         // Edit button (only for draft/ready)
         if (canEdit) {
             actionButtons.push(`<button class="btn btn-small" onclick="editArticle('${article.id}')">Modifica</button>`);
         }
-
         // Status change buttons
         availableActions.forEach(action => {
             actionButtons.push(`<button class="btn btn-small ${action.class}" 
-                                      onclick="changeStatus('${article.id}', '${action.type}')">${action.label}</button>`);
+                                  onclick="changeStatus('${article.id}', '${action.type}')">${action.label}</button>`);
         });
-
-        // Delete button (maybe restrict this too?)
-        actionButtons.push(`<button class="btn btn-small btn-danger" onclick="deleteArticle('${article.id}')">Elimina</button>`);
-
+        // Delete button
+        if (article.status === STATUSES.DRAFT)
+            actionButtons.push(`<button class="btn btn-small btn-danger" onclick="deleteArticle('${article.id}')">Elimina</button>`);
         // Show last status change info if available
         const statusChangeInfo = article.lastStatusChange ?
             `<div class="status-change-info">Modificato il ${formatDate(article.statusUpdated.timestamp)} da ${article.statusUpdated.gitUsername}</div>` : '';
-
         return `
-            <div class="article-card">
-                <div class="article-status status-${article.status}">${STATUS_LABELS[article.status]}</div>
-                <div class="article-title">${escapeHtml(article.title)}</div>
-                <div class="article-excerpt">${escapeHtml(article.excerpt)}</div>
-                <div class="article-meta">
-                    ${article.category} • ${formatDate(article.date)} • ${article.author}
-                    ${article.images && article.images.length > 0 ? ` • ${article.images.length} immagini` : ''}
-                </div>
-                ${statusChangeInfo}
-                <div class="article-actions">
-                    ${actionButtons.join('')}
-                </div>
+        <div class="article-card">
+            <div class="article-status status-${article.status}">${STATUS_LABELS[article.status]}</div>
+            <div class="article-title">${escapeHtml(article.title)}</div>
+            <div class="article-excerpt">${escapeHtml(article.excerpt)}</div>
+            <div class="article-meta">
+                ${article.category} • ${formatDate(article.date)} • ${article.author}
+                ${article.images && article.images.length > 0 ? ` • ${article.images.length} immagini` : ''}
             </div>
-        `;
+            ${statusChangeInfo}
+            <div class="article-actions">
+                ${actionButtons.join('')}
+            </div>
+        </div>
+    `;
     }).join('');
 
     container.innerHTML = `<div class="articles-grid">${articlesHtml}</div>`;
@@ -1170,12 +1171,6 @@ function showInfo(message) {
     }, 3000);
 }
 
-// Settings helper function (needs to be implemented)
-function getSetting(key, defaultValue) {
-    // This would typically read from localStorage or settings API
-    return defaultValue;
-}
-
 // Close modal when clicking outside
 window.onclick = function (event) {
     const modal = document.getElementById('articleModal');
@@ -1187,4 +1182,10 @@ window.onclick = function (event) {
     if (event.target === settingsModal) {
         closeSettingsModal();
     }
+};
+
+// Export functions for use in other scripts (if needed)
+window.settingsManager = {
+    loadArticles,
+    setupConnectionMonitoring
 };
