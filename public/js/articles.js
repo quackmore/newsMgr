@@ -1026,6 +1026,8 @@ function renderArticles() {
         // Delete button
         if (article.status === STATUSES.DRAFT)
             actionButtons.push(`<button class="btn btn-small btn-danger" onclick="deleteArticle('${article.id}')">Elimina</button>`);
+        // Preview button
+        actionButtons.push(`<button class="btn btn-small" onclick="window.open('/articles/${article.id}/content.html', '_blank')">Anteprima</button>`);
         // Show last status change info if available
         const statusChangeInfo = article.lastStatusChange ?
             `<div class="status-change-info">Modificato il ${formatDate(article.statusUpdated.timestamp)} da ${article.statusUpdated.gitUsername}</div>` : '';
