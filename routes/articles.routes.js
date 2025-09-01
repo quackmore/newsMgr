@@ -5,8 +5,10 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { userConfig } from '../conf/conf.js';
 
-const ARTICLES_DIR = `${userConfig.get('ambDataPath')}/articles/`;
-const DATA_FILE = path.join(ARTICLES_DIR, 'list.json');
+const repoName = userConfig.get('githubRepo');
+const basePath = userConfig.get('basePath');
+const articlesPath = path.join(basePath, path.basename(repoName, '.git'), 'articles');
+const DATA_FILE = path.join(articlesPath, 'list.json');
 
 const router = express.Router();
 
@@ -14,7 +16,7 @@ const router = express.Router();
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
         const articleId = req.params.id;
-        const uploadDir = path.join(ARTICLES_DIR, articleId);
+        const uploadDir = path.join(articlesPath, articleId);
         // Create directory if it doesn't exist
         fs.mkdir(uploadDir, { recursive: true }).then(() => {
             cb(null, uploadDir);

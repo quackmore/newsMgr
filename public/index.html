@@ -16,15 +16,18 @@
     <div class="container">
         <header>
             <h1>Gestore Articoli</h1>
-            <p class="subtitle">Gestisci le news che compaiono su www.ambvillagdogna.it</p>
+            <p class="subtitle">Gestisci le news che compaiono su <a href="https://www.ambvillagdogna.it"
+                    title="www.ambvillagdogna.it">www.ambvillagdogna.it</a></p>
+            <a href="https://www.flaticon.com/free-icons/marketing" title="marketing icons">Icone create da Freepik -
+                Flaticon</a>
         </header>
 
         <div class="actions">
             <button class="btn btn-success" onclick="openNewArticleModal()">Nuovo Articolo</button>
-            <button class="btn" onclick="loadArticles()">Aggiorna Lista</button>
+            <button class="btn" onclick="refreshContent()">Aggiorna Articoli</button>
+            <button class="btn" onclick="gitPush()">Salva Articoli</button>
             <button class="btn btn-secondary" onclick="openSettingsModal()">⚙️ Impostazioni</button>
-            <a href="https://www.flaticon.com/free-icons/marketing" title="marketing icons">Icone create da Freepik -
-                Flaticon</a>
+
         </div>
 
         <div id="articlesContainer">
@@ -135,13 +138,6 @@
 
             <form id="settingsForm">
                 <div class="form-group">
-                    <label for="gitUsername">Username Git</label>
-                    <input type="text" id="gitUsername" placeholder="Il tuo username Git">
-                    <small>Username utilizzato per i commit Git</small>
-                    <div class="error" id="gitUsernameError"></div>
-                </div>
-
-                <div class="form-group">
                     <label for="authorName">Nome Autore</label>
                     <input type="text" id="authorName" placeholder="Nome visualizzato negli articoli">
                     <small>Nome che apparirà come autore degli articoli</small>
@@ -149,10 +145,24 @@
                 </div>
 
                 <div class="form-group">
-                    <label for="ambDataPath">amb-data path</label>
-                    <input type="text" id="ambDataPath" placeholder="~/amb-data">
-                    <small>Cartella di partenza per amb-data</small>
-                    <div class="error" id="ambDataPathError"></div>
+                    <label for="gitUsername">Username GitHub</label>
+                    <input type="text" id="gitUsername" placeholder="Il tuo username Git">
+                    <small>Username utilizzato per GitHub</small>
+                    <div class="error" id="gitUsernameError"></div>
+                </div>
+
+                <div class="form-group">
+                    <label for="basePath">Cartella di partenza</label>
+                    <input type="text" id="basePath" placeholder="~/Documenti">
+                    <small>Cartella di partenza per i dati</small>
+                    <div class="error" id="basePathError"></div>
+                </div>
+
+                <div class="form-group">
+                    <label for="githubRepo">GitHub repository</label>
+                    <input type="text" id="githubRepo" placeholder="">
+                    <small>Nome del repository GitHub per i dati</small>
+                    <div class="error" id="githubRepoError"></div>
                 </div>
 
                 <div style="text-align: right; margin-top: 30px;">
@@ -167,6 +177,7 @@
     <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.min.js"></script> -->
     <script type="text/javascript" src="/assets/quill/1.3.7/quill.min.js"></script>
     <script type="text/javascript" src="/assets/quill-image-resize-module/3.0.0/image-resize.min.js"></script>
+    <script type="text/javascript" src="/js/git.js"></script>
     <script type="text/javascript" src="/js/settings.js"></script>
     <script type="text/javascript" src="/js/articles.js"></script>
     <script type="text/javascript" src="/js/init.js"></script>

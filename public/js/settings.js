@@ -25,9 +25,16 @@ const validateSettings = (settings) => {
     }
 
     // Data base path validation
-    if (settings.ambDataPath && settings.ambDataPath.trim() !== '') {
-        if (settings.ambDataPath.length > 200) {
-            errors.ambDataPath = 'BasePath troppo lungo (max 200 caratteri)';
+    if (settings.basePath && settings.basePath.trim() !== '') {
+        if (settings.basePath.length > 200) {
+            errors.basePath = 'BasePath troppo lungo (max 200 caratteri)';
+        }
+    }
+
+    // Data repo validation
+    if (settings.githubRepo && settings.githubRepo.trim() !== '') {
+        if (settings.githubRepo.length > 200) {
+            errors.githubRepo = 'githubRepo troppo lungo (max 200 caratteri)';
         }
     }
 
@@ -56,8 +63,9 @@ async function loadSettings() {
 function openSettingsModal() {
     // Populate form with current settings
     document.getElementById('gitUsername').value = currentSettings.gitUsername || '';
+    document.getElementById('githubRepo').value = currentSettings.githubRepo || '';
     document.getElementById('authorName').value = currentSettings.authorName || '';
-    document.getElementById('ambDataPath').value = currentSettings.ambDataPath || '';
+    document.getElementById('basePath').value = currentSettings.basePath || '';
 
     document.getElementById('settingsModal').style.display = 'block';
     clearSettingsErrors();
@@ -74,9 +82,10 @@ document.getElementById('settingsForm').addEventListener('submit', async (e) => 
     e.preventDefault();
 
     const formData = {
-        gitUsername: document.getElementById('gitUsername').value.trim(),
         authorName: document.getElementById('authorName').value.trim(),
-        ambDataPath: document.getElementById('ambDataPath').value.trim()
+        gitUsername: document.getElementById('gitUsername').value.trim(),
+        githubRepo: document.getElementById('githubRepo').value.trim(),
+        basePath: document.getElementById('basePath').value.trim()
     };
 
     // Validate settings

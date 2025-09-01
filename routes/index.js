@@ -1,14 +1,14 @@
 import express from 'express';
 import { articlesRoutes } from './articles.routes.js';
 import { confRoutes } from './conf.routes.js';
-// const gitRoutes = require('./git.routes');
+import { gitRoutes } from './git.routes.js';
 
 const router = express.Router();
 
 // Register all route modules
 router.use('/articles', articlesRoutes);
 router.use('/config', confRoutes);
-// router.use('/git', gitRoutes);
+router.use('/git', gitRoutes);
 
 // Handle 404 for API routes
 router.use('*path', (req, res) => {

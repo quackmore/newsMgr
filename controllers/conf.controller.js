@@ -2,8 +2,10 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { userConfig } from '../conf/conf.js';
 
-const ARTICLES_DIR = `${userConfig.get('ambDataPath')}/`;
-const REPO_SETTINGS_FILE = path.join(ARTICLES_DIR, 'settings.json');
+const repoName = userConfig.get('githubRepo');
+const basePath = userConfig.get('basePath');
+const repoPath = path.join(basePath, path.basename(repoName, '.git'));
+const REPO_SETTINGS_FILE = path.join(repoPath, 'settings.json');
 
 async function loadSettingss() {
     try {

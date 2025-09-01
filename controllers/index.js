@@ -3,10 +3,10 @@
  */
 import { articlesController } from './articles.controller.js';
 import { confController } from './conf.controller.js';
-// const gitController = require('./git.controller');
+import { gitController } from './git.controller.js';
 
 export {
     articlesController,
     confController,
-    //     gitController
+    gitController
 };

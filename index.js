@@ -1,14 +1,16 @@
 import { exec } from 'child_process';
 import os from 'os';
 import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
+import { dirname, join, basename } from 'path';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 import { userConfig } from './conf/conf.js';
-const ARTICLES_DIR = `${userConfig.get('ambDataPath')}/articles`;
-console.log('Articles directory:', ARTICLES_DIR);
+const repoName = userConfig.get('githubRepo');
+const basePath = userConfig.get('basePath');
+const articlesPath = join(basePath, basename(repoName, '.git'), 'articles');
+console.log('Articles directory:', articlesPath);
 
 import express from 'express';
 // import { errorMiddleware } from './middleware';
@@ -28,7 +30,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.static(join(__dirname, '/public')));
 
 // Serve image files from the 'somewhere-data' directory under the '/data' path
-app.use('/articles', express.static(ARTICLES_DIR));
+app.use('/articles', express.static(articlesPath));
 
 // Register API routes
 app.use('/api', routes);

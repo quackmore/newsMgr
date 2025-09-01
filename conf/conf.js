@@ -3,8 +3,9 @@ import Conf from 'conf';
 const userConfig = new Conf({
     projectName: 'microblog',
     defaults: {
-        ambDataPath: '/archive/projects/ambvilladogna/amb-data',
+        basePath: '',
         gitUsername: '',
+        githubRepo: 'amb-data',
         authorName: 'author'
     }
 });

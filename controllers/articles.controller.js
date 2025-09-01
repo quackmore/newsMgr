@@ -2,8 +2,11 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { userConfig } from '../conf/conf.js';
 
-const ARTICLES_DIR = `${userConfig.get('ambDataPath')}/articles/`;
-const DATA_FILE = path.join(ARTICLES_DIR, 'list.json');
+const repoName = userConfig.get('githubRepo');
+const basePath = userConfig.get('basePath');
+const articlesPath = path.join(basePath, path.basename(repoName, '.git'), 'articles');
+
+const DATA_FILE = path.join(articlesPath, 'list.json');
 
 // Helper functions
 function generateArticleId(title, existingArticles = [], date = new Date()) {
@@ -58,7 +61,7 @@ async function saveArticles(articles) {
 
 async function loadArticleContent(articleId) {
     try {
-        const contentFile = path.join(ARTICLES_DIR, articleId, 'content.html');
+        const contentFile = path.join(articlesPath, articleId, 'content.html');
         return await fs.readFile(contentFile, 'utf8');
     } catch (error) {
         if (error.code === 'ENOENT') {
@@ -69,7 +72,7 @@ async function loadArticleContent(articleId) {
 }
 
 async function saveArticleContent(articleId, content) {
-    const articleDir = path.join(ARTICLES_DIR, articleId);
+    const articleDir = path.join(articlesPath, articleId);
     await fs.mkdir(articleDir, { recursive: true });
     const contentFile = path.join(articleDir, 'content.html');
     await fs.writeFile(contentFile, content);
@@ -77,7 +80,7 @@ async function saveArticleContent(articleId, content) {
 
 async function loadArticleImages(articleId) {
     try {
-        const articleDir = path.join(ARTICLES_DIR, articleId);
+        const articleDir = path.join(articlesPath, articleId);
         const files = await fs.readdir(articleDir);
 
         return files.filter(file => {
@@ -96,8 +99,8 @@ async function loadArticleImages(articleId) {
 }
 
 async function renameArticleDirectory(oldId, newId) {
-    const oldDir = path.join(ARTICLES_DIR, oldId);
-    const newDir = path.join(ARTICLES_DIR, newId);
+    const oldDir = path.join(articlesPath, oldId);
+    const newDir = path.join(articlesPath, newId);
 
     try {
         await fs.access(oldDir);
@@ -112,7 +115,7 @@ async function renameArticleDirectory(oldId, newId) {
 }
 
 async function deleteArticleDirectory(articleId) {
-    const articleDir = path.join(ARTICLES_DIR, articleId);
+    const articleDir = path.join(articlesPath, articleId);
     try {
         await fs.rm(articleDir, { recursive: true, force: true });
     } catch (error) {
@@ -509,7 +512,7 @@ const articlesController = {
             }
 
             const filename = decodeURIComponent(req.params.filename);
-            const imagePath = path.join(ARTICLES_DIR, req.params.id, filename);
+            const imagePath = path.join(articlesPath, req.params.id, filename);
 
             // Delete the file
             try {
