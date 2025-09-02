@@ -48,7 +48,7 @@ app.listen(PORT, () => {
       break;
   }
 
-  if (process.env.NODE_ENV === 'production') {
+  if (process.env.NODE_ENV !== 'development') {
     exec(startCommand, (error) => {
       if (error) {
         console.error(`Error opening browser: ${error.message}`);
