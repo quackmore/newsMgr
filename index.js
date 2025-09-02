@@ -1,10 +1,6 @@
 import { exec } from 'child_process';
 import os from 'os';
-import { fileURLToPath } from 'url';
-import { dirname, join, basename } from 'path';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+import { join, basename } from 'path';
 
 import { userConfig } from './conf/conf.js';
 const repoName = userConfig.get('githubRepo');
@@ -13,7 +9,6 @@ const articlesPath = join(basePath, basename(repoName, '.git'), 'articles');
 console.log('Articles directory:', articlesPath);
 
 import express from 'express';
-// import { errorMiddleware } from './middleware';
 import { routes } from './routes/index.js';
 
 // Initialize express app
@@ -27,21 +22,13 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Serve static files from the public directory
-app.use(express.static(join(__dirname, '/public')));
+app.use(express.static(join(process.cwd(), 'public')));
 
 // Serve image files from the 'somewhere-data' directory under the '/data' path
 app.use('/articles', express.static(articlesPath));
 
 // Register API routes
 app.use('/api', routes);
-
-// Serve the front end for any other route
-// apparently this is REDUNDANT...
-//
-// app.get('*path', (req, res) => {
-//   res.sendFile(join(__dirname, '/public', 'index.html'));
-// });
-
 
 // Start the server
 app.listen(PORT, () => {
@@ -61,7 +48,7 @@ app.listen(PORT, () => {
       break;
   }
 
-  if (process.env.NODE_ENV === 'production') {
+  if (process.env.NODE_ENV !== 'development') {
     exec(startCommand, (error) => {
       if (error) {
         console.error(`Error opening browser: ${error.message}`);
